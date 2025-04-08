@@ -43,6 +43,8 @@ public class CommandParser {
             return new DeleteCommand(input);
         } else if (inputUpper.startsWith("INPUT")) {
             return new InputCommand(input);
+        } else if (inputUpper.startsWith("SHOW")) {
+            return new ShowCommand(input);
         } else if (inputUpper.equals("EXIT")) {
             return new ExitCommand();
         } else {
@@ -294,7 +296,7 @@ public class CommandParser {
             }
             System.out.println("Executing LET command: storing result into table '" 
                 + newTableName + "' with key '" + keyAttribute + "'.");
-            // In a complete implementation, the SELECT operation would produce a result set.
+            // In a full implementation, the SELECT operation would produce a result set.
             // Here, we simulate by creating an empty table with a dummy schema containing the key attribute.
             java.util.List<Table.Attribute> dummySchema = new java.util.ArrayList<>();
             dummySchema.add(new Table.Attribute(keyAttribute, Table.Attribute.DataType.TEXT, true));
@@ -360,7 +362,7 @@ public class CommandParser {
             valuesPart = valuesPart.substring(1, valuesPart.length() - 1).trim();
             String[] vals = valuesPart.split(",");
             for (String val : vals) {
-                values.add(val.trim().replaceAll("^\"|\"$", "")); // remove surrounding quotes if any.
+                values.add(val.trim().replaceAll("^\"|\"$", ""));
             }
         }
         
@@ -531,6 +533,90 @@ public class CommandParser {
             dbms.saveState();
             System.out.println("Exiting DBMS. State has been saved.");
             System.exit(0);
+        }
+    }
+    
+    // -------------------- New Show Command --------------------
+    /**
+     * The SHOW command supports:
+     *   SHOW DATABASES;
+     *   SHOW TABLES;
+     *   SHOW RECORDS tableName;
+     */
+    public static class ShowCommand implements DBMS.Command {
+        private String subCommand;
+        private String tableName;  // Used only if subCommand is RECORDS.
+        
+        public ShowCommand(String input) throws Exception {
+            // Remove the "SHOW" keyword.
+            String remainder = input.substring("SHOW".length()).trim();
+            if (remainder.isEmpty()) {
+                throw new IllegalArgumentException("SHOW command requires parameters (e.g., DATABASES, TABLES, RECORDS <tableName>).");
+            }
+            String[] parts = remainder.split("\\s+");
+            subCommand = parts[0].toUpperCase();
+            if (subCommand.equals("RECORDS")) {
+                if (parts.length < 2) {
+                    throw new IllegalArgumentException("SHOW RECORDS command requires a table name.");
+                }
+                tableName = parts[1];
+            }
+        }
+        
+        @Override
+        public void execute(DBMS dbms) {
+            if (subCommand.equals("DATABASES")) {
+                java.util.Set<String> dbs = dbms.listDatabases();
+                if (dbs.isEmpty()) {
+                    System.out.println("No databases available.");
+                } else {
+                    System.out.println("Databases:");
+                    for (String dbName : dbs) {
+                        System.out.println(" - " + dbName);
+                    }
+                }
+            } else if (subCommand.equals("TABLES")) {
+                if (dbms.getCurrentDatabase() == null) {
+                    System.out.println("Error: No database selected.");
+                    return;
+                }
+                java.util.Set<String> tables = dbms.getCurrentDatabase().listTables();
+                if (tables.isEmpty()) {
+                    System.out.println("No tables in the current database.");
+                } else {
+                    System.out.println("Tables in database '" + dbms.getCurrentDatabase().getName() + "':");
+                    for (String t : tables) {
+                        System.out.println(" - " + t);
+                    }
+                }
+            } else if (subCommand.equals("RECORDS")) {
+                if (dbms.getCurrentDatabase() == null) {
+                    System.out.println("Error: No database selected.");
+                    return;
+                }
+                Table table = dbms.getCurrentDatabase().getTable(tableName);
+                if (table == null) {
+                    System.out.println("Error: Table '" + tableName + "' does not exist.");
+                    return;
+                }
+                java.util.List<Table.Record> recs = table.getRecords();
+                if (recs.isEmpty()) {
+                    System.out.println("Table '" + tableName + "' is empty.");
+                } else {
+                    System.out.println("Records of table '" + tableName + "':");
+                    int count = 1;
+                    for (Table.Record r : recs) {
+                        System.out.print(count + ".\t");
+                        for (Object val : r.getValues()) {
+                            System.out.print(val + "\t");
+                        }
+                        System.out.println();
+                        count++;
+                    }
+                }
+            } else {
+                System.out.println("Invalid SHOW command parameter: " + subCommand);
+            }
         }
     }
 }
