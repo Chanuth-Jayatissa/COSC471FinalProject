@@ -83,18 +83,27 @@ public class Table implements Serializable {
      * If the condition is blank, returns a copy of all records.
      */
     public List<Record> select(String condition) {
-        if (condition == null || condition.trim().isEmpty()) {
-            return new ArrayList<>(records);
+        List<Record> result = new ArrayList<>();
+        List<Record> searchList;
+        // Use the BST's in-order traversal if a primary key is set; otherwise, use the raw list.
+        if (primaryKey != null && bstIndex != null) {
+            searchList = bstIndex.inOrderTraversal();
         } else {
-            List<Record> filtered = new ArrayList<>();
-            for (Record record : records) {
-                if (recordMatchesCondition(record, condition)) {
-                    filtered.add(record);
-                }
-            }
-            return filtered;
+            searchList = records;
         }
+        // If no condition is specified, return the entire list.
+        if (condition == null || condition.trim().isEmpty()) {
+            return new ArrayList<>(searchList);
+        }
+        // Otherwise, filter the records based on the condition.
+        for (Record record : searchList) {
+            if (recordMatchesCondition(record, condition)) {
+                result.add(record);
+            }
+        }
+        return result;
     }
+    
     
     /**
      * Public helper for other classes to check if a record matches a condition.
