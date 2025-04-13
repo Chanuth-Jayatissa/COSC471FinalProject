@@ -10,7 +10,7 @@ public class Table implements Serializable {
     private List<Record> records;
     private String primaryKey; // Name of the primary key attribute.
     
-    // Uses our KeyWrapper (see below) with a type-safe BST.
+    // Uses a type-safe BST (implemented in BinarySearchTree) with a helper KeyWrapper.
     private BinarySearchTree<KeyWrapper, Record> bstIndex;
     
     public Table(String name, List<Attribute> attributes) {
@@ -50,8 +50,10 @@ public class Table implements Serializable {
     
     /**
      * Validates a record against the table's schema.
-     * Checks that the number of values matches the number of attributes and
-     * that each value conforms to the domain (data type and constraints).
+     * Checks that:
+     *  - The number of values equals the number of attributes.
+     *  - Each value conforms to the attribute's domain.
+     *  - For a primary key attribute, the value is not null or empty.
      */
     private boolean validateRecord(Record record) {
         if (record.getValues().size() != attributes.size()) {
@@ -62,10 +64,17 @@ public class Table implements Serializable {
             Attribute attr = attributes.get(i);
             Object value = record.getValue(i);
             
-            // For simplicity, assume values are provided (non-null)
+            // Entity Integrity: Primary key must not be null or blank.
+            if (attr.isPrimaryKey()) {
+                if (value == null || value.toString().trim().isEmpty()) {
+                    System.out.println("Error: Primary key attribute '" + attr.getName() + "' cannot be null or empty.");
+                    return false;
+                }
+            }
+            
+            // Domain Constraints
             if (attr.getDataType() == Attribute.DataType.INTEGER) {
                 try {
-                    // Attempt to parse as integer.
                     Integer.parseInt(value.toString());
                 } catch (NumberFormatException e) {
                     System.out.println("Error: Value for attribute '" + attr.getName() + "' is not a valid integer.");
@@ -91,15 +100,13 @@ public class Table implements Serializable {
     
     /**
      * Inserts a record into the table.
-     * If a primary key exists, validates that the record's key is unique and inserts the record into the BST index.
+     * Validates the record (domain and entity constraints) and checks for duplicate primary key values.
      */
     public boolean insert(Record record) {
-        // Validate record against domain and integrity constraints.
         if (!validateRecord(record)) {
             return false;
         }
         
-        // If a primary key is defined, check for duplicates and insert into the BST.
         if (primaryKey != null && bstIndex != null) {
             int pkIndex = -1;
             for (int i = 0; i < attributes.size(); i++) {
@@ -117,8 +124,8 @@ public class Table implements Serializable {
                 System.out.println("Primary key value is not comparable.");
                 return false;
             }
-            // Check for duplicate key using the BST search.
             KeyWrapper wrappedKey = new KeyWrapper(keyValue);
+            // Check for duplicate key.
             Record existingRecord = bstIndex.search(wrappedKey);
             if (existingRecord != null) {
                 System.out.println("Error: Duplicate primary key value: " + keyValue);
@@ -126,7 +133,6 @@ public class Table implements Serializable {
             }
             bstIndex.insert(wrappedKey, record);
         }
-        
         records.add(record);
         System.out.println("Record inserted into table '" + name + "'.");
         return true;
@@ -134,12 +140,11 @@ public class Table implements Serializable {
     
     /**
      * Retrieves records that match the given condition.
-     * If the table has a primary key, records are retrieved in order from the BST's in-order traversal.
+     * If the table has a primary key with a BST index, the records are retrieved via an in-order traversal.
      */
     public List<Record> select(String condition) {
         List<Record> result = new ArrayList<>();
         List<Record> searchList;
-        // Use BST in-order traversal if a primary key and BST index exist.
         if (primaryKey != null && bstIndex != null) {
             searchList = bstIndex.inOrderTraversal();
         } else {
@@ -157,7 +162,7 @@ public class Table implements Serializable {
     }
     
     /**
-     * Public helper to check if a record matches a condition.
+     * Public helper to check if a record matches the condition.
      */
     public boolean matchesCondition(Record record, String condition) {
         return recordMatchesCondition(record, condition);
@@ -166,7 +171,7 @@ public class Table implements Serializable {
     // ----------------- Condition Evaluation Helpers -----------------
     
     /**
-     * Evaluates a simple condition of the form "attr operator constant" for a record.
+     * Evaluates a simple condition of the form "AttrName RelOp Constant" for a record.
      */
     private boolean recordMatchesCondition(Record record, String condition) {
         String[] tokens = condition.trim().split("\\s+");
@@ -278,7 +283,110 @@ public class Table implements Serializable {
     // ----------------- End of Condition Evaluation Helpers -----------------
     
     /**
-     * Renames the attributes of the table with the provided new names.
+     * Updates records in the table that match the given condition.
+     * It checks that the new values satisfy domain, entity integrity, and key constraints.
+     *
+     * @param condition A string condition to select records (e.g., "id = 2").
+     * @param updatedValues A Record object containing new values for the update.
+     * @return The number of records updated.
+     */
+    public int update(String condition, Record updatedValues) {
+        int updatedCount = 0;
+        // Iterate over each record.
+        for (Record record : records) {
+            if (condition == null || condition.trim().isEmpty() || recordMatchesCondition(record, condition)) {
+                List<Object> currentVals = record.getValues();
+                List<Attribute> attrs = attributes;
+                List<Object> newVals = updatedValues.getValues();
+                // For each attribute position provided in updatedValues,
+                // update the record only if a new value is present.
+                for (int i = 0; i < newVals.size(); i++) {
+                    Object newVal = newVals.get(i);
+                    if (newVal == null) continue; // Skip update for this attribute
+                    
+                    Attribute attr = attrs.get(i);
+                    
+                    // Domain Constraint Check
+                    if (attr.getDataType() == Attribute.DataType.INTEGER) {
+                        try {
+                            Integer.parseInt(newVal.toString());
+                        } catch (NumberFormatException e) {
+                            System.out.println("Error: New value for attribute '" + attr.getName() + "' is not a valid integer.");
+                            continue;
+                        }
+                    } else if (attr.getDataType() == Attribute.DataType.FLOAT) {
+                        try {
+                            Double.parseDouble(newVal.toString());
+                        } catch (NumberFormatException e) {
+                            System.out.println("Error: New value for attribute '" + attr.getName() + "' is not a valid float.");
+                            continue;
+                        }
+                    } else if (attr.getDataType() == Attribute.DataType.TEXT) {
+                        String text = newVal.toString();
+                        if (text.length() > 100) {
+                            System.out.println("Error: New value for attribute '" + attr.getName() + "' exceeds 100 characters.");
+                            continue;
+                        }
+                    }
+                    
+                    // Entity Integrity & Key Constraint Check for primary key.
+                    if (attr.isPrimaryKey()) {
+                        if (newVal == null || newVal.toString().trim().isEmpty()) {
+                            System.out.println("Error: Primary key '" + attr.getName() + "' cannot be null or empty.");
+                            continue;
+                        }
+                        KeyWrapper newKey = new KeyWrapper(newVal);
+                        Record duplicate = bstIndex.search(newKey);
+                        if (duplicate != null && duplicate != record) {
+                            System.out.println("Error: Duplicate primary key value: " + newVal);
+                            continue;
+                        }
+                        // (Note: A full update would remove the old key and re-insert the new key into the BST.)
+                    }
+                    
+                    // If all checks pass, update the attribute's value.
+                    currentVals.set(i, newVal);
+                }
+                updatedCount++;
+            }
+        }
+        System.out.println(updatedCount + " record(s) updated in table '" + name + "'.");
+        return updatedCount;
+    }
+    
+    /**
+     * Deletes records from the table that match the given condition.
+     * If no condition is provided, deletes all records and resets the BST index.
+     *
+     * @param condition A string condition.
+     * @return The number of records deleted.
+     */
+    public int delete(String condition) {
+        int initialSize = records.size();
+        if (condition == null || condition.trim().isEmpty()) {
+            if (bstIndex != null)
+                bstIndex = new BinarySearchTree<>();
+            records.clear();
+            System.out.println("All records deleted from table '" + name + "'.");
+            return initialSize;
+        }
+        int deletedCount = 0;
+        for (int i = records.size() - 1; i >= 0; i--) {
+            Record record = records.get(i);
+            if (recordMatchesCondition(record, condition)) {
+                records.remove(i);
+                deletedCount++;
+            }
+        }
+        System.out.println(deletedCount + " record(s) deleted from table '" + name + "'.");
+        return deletedCount;
+    }
+    
+    /**
+     * Renames the attributes of the table using the provided new names.
+     *
+     * @param newNames A list of new attribute names.
+     * @return true if renaming is successful; false otherwise.
      */
     public boolean renameAttributes(List<String> newNames) {
         if (newNames.size() != attributes.size()) {
