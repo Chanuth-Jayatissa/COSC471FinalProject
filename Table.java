@@ -49,10 +49,57 @@ public class Table implements Serializable {
     }
     
     /**
+     * Validates a record against the table's schema.
+     * Checks that the number of values matches the number of attributes and
+     * that each value conforms to the domain (data type and constraints).
+     */
+    private boolean validateRecord(Record record) {
+        if (record.getValues().size() != attributes.size()) {
+            System.out.println("Error: Number of values does not match table schema.");
+            return false;
+        }
+        for (int i = 0; i < attributes.size(); i++) {
+            Attribute attr = attributes.get(i);
+            Object value = record.getValue(i);
+            
+            // For simplicity, assume values are provided (non-null)
+            if (attr.getDataType() == Attribute.DataType.INTEGER) {
+                try {
+                    // Attempt to parse as integer.
+                    Integer.parseInt(value.toString());
+                } catch (NumberFormatException e) {
+                    System.out.println("Error: Value for attribute '" + attr.getName() + "' is not a valid integer.");
+                    return false;
+                }
+            } else if (attr.getDataType() == Attribute.DataType.FLOAT) {
+                try {
+                    Double.parseDouble(value.toString());
+                } catch (NumberFormatException e) {
+                    System.out.println("Error: Value for attribute '" + attr.getName() + "' is not a valid float.");
+                    return false;
+                }
+            } else if (attr.getDataType() == Attribute.DataType.TEXT) {
+                String text = value.toString();
+                if (text.length() > 100) {
+                    System.out.println("Error: Value for attribute '" + attr.getName() + "' exceeds 100 characters.");
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+    
+    /**
      * Inserts a record into the table.
-     * If a primary key exists, extracts, wraps, and inserts it into the BST index.
+     * If a primary key exists, validates that the record's key is unique and inserts the record into the BST index.
      */
     public boolean insert(Record record) {
+        // Validate record against domain and integrity constraints.
+        if (!validateRecord(record)) {
+            return false;
+        }
+        
+        // If a primary key is defined, check for duplicates and insert into the BST.
         if (primaryKey != null && bstIndex != null) {
             int pkIndex = -1;
             for (int i = 0; i < attributes.size(); i++) {
@@ -70,32 +117,37 @@ public class Table implements Serializable {
                 System.out.println("Primary key value is not comparable.");
                 return false;
             }
+            // Check for duplicate key using the BST search.
             KeyWrapper wrappedKey = new KeyWrapper(keyValue);
+            Record existingRecord = bstIndex.search(wrappedKey);
+            if (existingRecord != null) {
+                System.out.println("Error: Duplicate primary key value: " + keyValue);
+                return false;
+            }
             bstIndex.insert(wrappedKey, record);
         }
+        
         records.add(record);
         System.out.println("Record inserted into table '" + name + "'.");
         return true;
     }
     
     /**
-     * Selects records that match the given condition.
-     * If the condition is blank, returns a copy of all records.
+     * Retrieves records that match the given condition.
+     * If the table has a primary key, records are retrieved in order from the BST's in-order traversal.
      */
     public List<Record> select(String condition) {
         List<Record> result = new ArrayList<>();
         List<Record> searchList;
-        // Use the BST's in-order traversal if a primary key is set; otherwise, use the raw list.
+        // Use BST in-order traversal if a primary key and BST index exist.
         if (primaryKey != null && bstIndex != null) {
             searchList = bstIndex.inOrderTraversal();
         } else {
             searchList = records;
         }
-        // If no condition is specified, return the entire list.
         if (condition == null || condition.trim().isEmpty()) {
             return new ArrayList<>(searchList);
         }
-        // Otherwise, filter the records based on the condition.
         for (Record record : searchList) {
             if (recordMatchesCondition(record, condition)) {
                 result.add(record);
@@ -104,9 +156,8 @@ public class Table implements Serializable {
         return result;
     }
     
-    
     /**
-     * Public helper for other classes to check if a record matches a condition.
+     * Public helper to check if a record matches a condition.
      */
     public boolean matchesCondition(Record record, String condition) {
         return recordMatchesCondition(record, condition);
@@ -125,9 +176,8 @@ public class Table implements Serializable {
         }
         String attrName = tokens[0];
         String operator = tokens[1];
-        String constantValue = tokens[2];
+        String constantValue = tokens[2].replaceAll("^\"|\"$", "");
         
-        // Find the attribute index.
         int attrIndex = -1;
         Attribute attr = null;
         for (int i = 0; i < attributes.size(); i++) {
@@ -142,9 +192,6 @@ public class Table implements Serializable {
             return false;
         }
         Object recordValue = record.getValue(attrIndex);
-        // Remove surrounding quotes from the constant (if any).
-        constantValue = constantValue.replaceAll("^\"|\"$", "");
-        
         if (attr.getDataType() == Attribute.DataType.INTEGER) {
             try {
                 int recVal = Integer.parseInt(recordValue.toString());
@@ -171,8 +218,7 @@ public class Table implements Serializable {
     
     private boolean compareInts(int a, String op, int b) {
         switch (op) {
-            case "=":
-            case "==":
+            case "=": case "==":
                 return a == b;
             case "!=":
                 return a != b;
@@ -192,8 +238,7 @@ public class Table implements Serializable {
     
     private boolean compareDoubles(double a, String op, double b) {
         switch (op) {
-            case "=":
-            case "==":
+            case "=": case "==":
                 return a == b;
             case "!=":
                 return a != b;
@@ -213,8 +258,7 @@ public class Table implements Serializable {
     
     private boolean compareStrings(String a, String op, String b) {
         switch (op) {
-            case "=":
-            case "==":
+            case "=": case "==":
                 return a.equals(b);
             case "!=":
                 return !a.equals(b);
@@ -231,11 +275,10 @@ public class Table implements Serializable {
                 return false;
         }
     }
-    
     // ----------------- End of Condition Evaluation Helpers -----------------
     
     /**
-     * Renames the attributes of the table using the provided new names.
+     * Renames the attributes of the table with the provided new names.
      */
     public boolean renameAttributes(List<String> newNames) {
         if (newNames.size() != attributes.size()) {
@@ -282,7 +325,6 @@ public class Table implements Serializable {
      */
     public static class Attribute implements Serializable {
         private static final long serialVersionUID = 1L;
-        
         private String name;
         private DataType dataType;
         private boolean primaryKey;
@@ -319,7 +361,6 @@ public class Table implements Serializable {
      */
     public static class Record implements Serializable {
         private static final long serialVersionUID = 1L;
-        
         private List<Object> values;
         
         public Record(List<Object> values) {
