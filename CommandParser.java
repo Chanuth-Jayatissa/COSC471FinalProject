@@ -316,13 +316,72 @@ public class CommandParser {
             }
             System.out.println("Executing LET command: storing result into table '"
                     + newTableName + "' with key '" + keyAttribute + "'.");
-            // In a full implementation, the SELECT operation would produce a result set.
-            // Here, we simulate by creating an empty table with a dummy schema containing
-            // the key attribute.
-            java.util.List<Table.Attribute> dummySchema = new java.util.ArrayList<>();
-            dummySchema.add(new Table.Attribute(keyAttribute, Table.Attribute.DataType.TEXT, true));
-            Table newTable = new Table(newTableName, dummySchema);
+
+            // Reference for the table the select command referenced
+            Table sourceTable = dbms.getCurrentDatabase().getTable(selectCommand.tableName);
+
+            // Checks if select operation properly selected a table
+            if (sourceTable == null) {
+                System.out.println("Error: Source table '" + selectCommand.tableName + "' does not exist.");
+                return;
+            }
+
+            // Not sure if this works properly
+            java.util.List<Table.Record> selectedRecords = sourceTable.select(selectCommand.condition);
+
+            // Build the new schema using the selected columns
+            java.util.List<Table.Attribute> originalAttrs = sourceTable.getAttributes();
+            java.util.List<Table.Attribute> newAttrs = new java.util.ArrayList<>();
+            boolean keyFound = false;
+
+            // For each column and attribute,
+            for (String col : selectCommand.columns) {
+                for (Table.Attribute attr : originalAttrs) {
+                    // If attribute name = column name,
+                    if (attr.getName().equalsIgnoreCase(col)) {
+                        // then see if this attribute is the key attribute referenced in LET command
+                        boolean isKey = attr.getName().equalsIgnoreCase(keyAttribute);
+                        if (isKey)
+                            keyFound = true;
+                        // add the key
+                        newAttrs.add(new Table.Attribute(attr.getName(), attr.getDataType(), isKey));
+                        break;
+                    }
+                }
+            }
+            // If the key is not in the select result
+            if (!keyFound) {
+                System.out.println("Error: Key attribute '" + keyAttribute + "' not found in SELECT result.");
+                return;
+            }
+
+            // Create the new table
+            Table newTable = new Table(newTableName, newAttrs);
+
+            // Loop through each record matching the select query
+            for (Table.Record oldRecord : selectedRecords) {
+                java.util.List<Object> targetValues = new java.util.ArrayList<>(); // Values we want to keep
+                java.util.List<Object> oldValues = oldRecord.getValues(); // full list of values from original record
+                java.util.List<Table.Attribute> sourceAttrs = sourceTable.getAttributes(); // Copying original schema
+
+                // For each column in select statement
+                for (String col : selectCommand.columns) {
+                    // Find the matching attribute in the source
+                    for (int i = 0; i < sourceAttrs.size(); i++) {
+                        if (sourceAttrs.get(i).getName().equalsIgnoreCase(col)) {
+                            // Add it to target
+                            targetValues.add(oldValues.get(i));
+                            break;
+                        }
+                    }
+                }
+                // Insert the values
+                newTable.insert(new Table.Record(targetValues));
+            }
+            // Add the table to the database
             dbms.getCurrentDatabase().addTable(newTableName, newTable);
+            System.out.println("LET: Table '" + newTableName + "' created with " +
+                    newTable.getRecords().size() + " record(s).");
         }
     }
 
