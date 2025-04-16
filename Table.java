@@ -171,19 +171,15 @@ public class Table implements Serializable {
     // ----------------- Advanced Condition Parsing -----------------
     
     /**
-     * Parses a condition string (which may be compound using AND/OR and optionally enclosed in outer parentheses)
-     * and returns a Condition object.
+     * Parses a condition string (which may be compound using AND/OR and optionally enclosed in parentheses) and returns a Condition object.
      */
     private Condition parseCondition(String condStr) {
         condStr = condStr.trim();
-        
-        // Remove outer parentheses if present
+        // If the condition is wrapped in parentheses, remove them.
         if (condStr.startsWith("(") && condStr.endsWith(")")) {
-            // Check that parentheses are balanced before removing them (optional enhancement)
             condStr = condStr.substring(1, condStr.length() - 1).trim();
         }
-
-        // Split by "or" (case-insensitive)
+        // Split by "or" (case-insensitive).
         String[] orParts = condStr.split("(?i)\\s+or\\s+");
         if (orParts.length > 1) {
             Condition condition = parseCondition(orParts[0]);
@@ -192,7 +188,7 @@ public class Table implements Serializable {
             }
             return condition;
         }
-        // Split by "and" (case-insensitive)
+        // Split by "and" (case-insensitive).
         String[] andParts = condStr.split("(?i)\\s+and\\s+");
         if (andParts.length > 1) {
             Condition condition = parseCondition(andParts[0]);
@@ -201,34 +197,31 @@ public class Table implements Serializable {
             }
             return condition;
         }
-        // If no logical operator is found, assume it is a simple condition.
+        // If no logical operator is found, it is a simple condition.
         String[] tokens = condStr.split("\\s+");
         if (tokens.length < 3) {
             throw new IllegalArgumentException("Invalid condition: " + condStr);
         }
         return new SimpleCondition(tokens[0], tokens[1], tokens[2].replaceAll("^\"|\"$", ""));
     }
-    
+
     /**
      * Evaluates whether a record satisfies the condition string.
      */
     private boolean recordMatchesCondition(Record record, String conditionStr) {
         try {
             Condition condition = parseCondition(conditionStr);
-            return condition.evaluate(record, attributes);
+            return condition.evaluate(record, this.attributes); // For single-table, use table's attributes.
         } catch (Exception e) {
             System.out.println("Error parsing condition: " + e.getMessage());
             return false;
         }
     }
-    
+
     private interface Condition {
         boolean evaluate(Record record, List<Attribute> attributes);
     }
-    
-    /**
-     * Class for evaluating simple conditions, e.g., "age > 20".
-     */
+
     private class SimpleCondition implements Condition {
         private String attrName;
         private String operator;
@@ -280,10 +273,7 @@ public class Table implements Serializable {
             }
         }
     }
-    
-    /**
-     * Class for evaluating compound conditions using "AND" or "OR".
-     */
+
     private class CompoundCondition implements Condition {
         private Condition left;
         private String logicalOperator; // "AND" or "OR"

@@ -1,3 +1,7 @@
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.locks.Condition;
+
 public class CommandParser {
 
     /**
@@ -188,41 +192,105 @@ public class CommandParser {
     }
     
     public static class SelectCommand implements DBMS.Command {
-        private java.util.List<String> columns = new java.util.ArrayList<>();
-        private String tableName;
-        private String condition = "";
+    private java.util.List<String> columns = new java.util.ArrayList<>();
+    private java.util.List<String> tableNames = new java.util.ArrayList<>();
+    private String condition = "";
+    
+    /**
+     * Expected format (simplified):
+     *   SELECT col1, col2, ... FROM tableName1 [, tableName2, ...] [WHERE condition]
+     */
+    public SelectCommand(String input) throws Exception {
+        String remainder = input.substring("SELECT".length()).trim();
         
-        /**
-         * Expected format (simplified):
-         *   SELECT col1, col2 FROM tableName [WHERE condition]
-         */
-        public SelectCommand(String input) throws Exception {
-            String remainder = input.substring("SELECT".length()).trim();
-            int fromIndex = remainder.toUpperCase().indexOf("FROM");
-            if (fromIndex == -1) {
-                throw new IllegalArgumentException("SELECT command must contain FROM clause.");
-            }
-            String colsPart = remainder.substring(0, fromIndex).trim();
-            String[] cols = colsPart.split(",");
-            for (String col : cols) {
-                columns.add(col.trim());
-            }
-            String afterFrom = remainder.substring(fromIndex + "FROM".length()).trim();
-            int whereIndex = afterFrom.toUpperCase().indexOf("WHERE");
-            if (whereIndex != -1) {
-                tableName = afterFrom.substring(0, whereIndex).trim();
-                condition = afterFrom.substring(whereIndex + "WHERE".length()).trim();
-            } else {
-                tableName = afterFrom;
-            }
+        int fromIndex = remainder.toUpperCase().indexOf("FROM");
+        if (fromIndex == -1) {
+            throw new IllegalArgumentException("SELECT command must contain FROM clause.");
         }
-        
-        @Override
-        public void execute(DBMS dbms) {
-            if (dbms.getCurrentDatabase() == null) {
-                System.out.println("Error: No database selected.");
-                return;
+        // Parse SELECT columns.
+        String colsPart = remainder.substring(0, fromIndex).trim();
+        String[] cols = colsPart.split(",");
+        for (String col : cols) {
+            columns.add(col.trim());
+        }
+        // Parse the FROM part.
+        String afterFrom = remainder.substring(fromIndex + "FROM".length()).trim();
+        int whereIndex = afterFrom.toUpperCase().indexOf("WHERE");
+        String tablesPart;
+        if (whereIndex != -1) {
+            tablesPart = afterFrom.substring(0, whereIndex).trim();
+            condition = afterFrom.substring(whereIndex + "WHERE".length()).trim();
+        } else {
+            tablesPart = afterFrom;
+        }
+        String[] tables = tablesPart.split(",");
+        for (String table : tables) {
+            tableNames.add(table.trim());
+        }
+    }
+    
+    @Override
+    public void execute(DBMS dbms) {
+        if (dbms.getCurrentDatabase() == null) {
+            System.out.println("Error: No database selected.");
+            return;
+        }
+        if (tableNames.size() > 1) {
+            // Multi-table join (Cartesian product)
+            List<List<Table.Record>> listOfRecordLists = new ArrayList<>();
+            // Build a combined schema with qualified attribute names.
+            List<Table.Attribute> combinedSchema = new ArrayList<>();
+            
+            for (String tName : tableNames) {
+                Table t = dbms.getCurrentDatabase().getTable(tName);
+                if (t == null) {
+                    System.out.println("Error: Table '" + tName + "' does not exist.");
+                    return;
+                }
+                listOfRecordLists.add(t.getRecords());
+                for (Table.Attribute attr : t.getAttributes()) {
+                    // Qualify attribute name with table name.
+                    combinedSchema.add(new Table.Attribute(tName + "." + attr.getName(), attr.getDataType(), attr.isPrimaryKey()));
+                }
             }
+            
+            // Compute the Cartesian product (join).
+            List<Table.Record> joinedRecords = cartesianProduct(listOfRecordLists);
+            
+            // Filter the joined records if a condition is provided.
+            List<Table.Record> finalRecords = new ArrayList<>();
+            if (condition != null && !condition.trim().isEmpty()) {
+                for (Table.Record rec : joinedRecords) {
+                    // Evaluate condition on the joined record using the combined schema.
+                    if (evaluateConditionOnJoinedRecord(rec, combinedSchema, condition)) {
+                        finalRecords.add(rec);
+                    }
+                }
+            } else {
+                finalRecords = joinedRecords;
+            }
+            
+            // For simplicity, assume that the SELECT list columns refer to the names in the combined schema.
+            System.out.println(String.join("\t", columns));
+            int count = 1;
+            for (Table.Record rec : finalRecords) {
+                System.out.print(count + ".\t");
+                List<Object> vals = rec.getValues();
+                // For each column in the SELECT list, find its index in the combined schema.
+                for (String col : columns) {
+                    int idx = findIndexInCombinedSchema(combinedSchema, col);
+                    if (idx != -1 && idx < vals.size()) {
+                        System.out.print(vals.get(idx) + "\t");
+                    } else {
+                        System.out.print("NULL\t");
+                    }
+                }
+                System.out.println();
+                count++;
+            }
+        } else {
+            // Single table select (existing behavior)
+            String tableName = tableNames.get(0);
             Table table = dbms.getCurrentDatabase().getTable(tableName);
             if (table == null) return;
             java.util.List<Table.Record> records = table.select(condition);
@@ -230,13 +298,11 @@ public class CommandParser {
                 System.out.println("Nothing found.");
                 return;
             }
-            // Print column headers.
             System.out.println(String.join("\t", columns));
             int count = 1;
             for (Table.Record record : records) {
                 System.out.print(count + ".\t");
                 java.util.List<Object> vals = record.getValues();
-                // For each requested column, find its index and print its value.
                 for (String col : columns) {
                     int idx = -1;
                     java.util.List<Table.Attribute> attrs = table.getAttributes();
@@ -257,6 +323,64 @@ public class CommandParser {
             }
         }
     }
+    
+    /**
+     * Computes the Cartesian product (cross join) of a list of record lists.
+     */
+    private List<Table.Record> cartesianProduct(List<List<Table.Record>> listOfRecordLists) {
+        List<Table.Record> result = new ArrayList<>();
+        if (listOfRecordLists.isEmpty()) {
+            result.add(new Table.Record(new ArrayList<>()));
+            return result;
+        }
+        cartesianProductHelper(listOfRecordLists, 0, new ArrayList<>(), result);
+        return result;
+    }
+    
+    private void cartesianProductHelper(List<List<Table.Record>> listOfRecordLists, int index, List<Object> current, List<Table.Record> result) {
+        if (index == listOfRecordLists.size()) {
+            result.add(new Table.Record(new ArrayList<>(current)));
+            return;
+        }
+        for (Table.Record rec : listOfRecordLists.get(index)) {
+            int initialSize = current.size();
+            current.addAll(rec.getValues());
+            cartesianProductHelper(listOfRecordLists, index + 1, current, result);
+            while (current.size() > initialSize) {
+                current.remove(current.size() - 1);
+            }
+        }
+    }
+    
+    /**
+     * Evaluates a condition on a joined record given the combined schema.
+     * For simplicity, this uses the same condition parser from Table.
+     */
+    private boolean evaluateConditionOnJoinedRecord(Table.Record record, List<Table.Attribute> combinedSchema, String conditionStr) {
+        try {
+            // Use the existing parseCondition method from the Table instance.
+            // For this evaluation, we pass the combinedSchema in place of Table's own schema.
+            Condition condition = parseCondition(conditionStr);
+            return condition.evaluate(record, combinedSchema);
+        } catch (Exception e) {
+            System.out.println("Error evaluating condition on joined record: " + e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Finds the index of the column in the combined schema.
+     */
+    private int findIndexInCombinedSchema(List<Table.Attribute> combinedSchema, String colName) {
+        for (int i = 0; i < combinedSchema.size(); i++) {
+            if (combinedSchema.get(i).getName().equalsIgnoreCase(colName)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+}
+
     
     public static class LetCommand implements DBMS.Command {
         private String newTableName;
