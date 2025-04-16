@@ -277,19 +277,18 @@ public class CommandParser {
             if (keyIndex == -1) {
                 throw new IllegalArgumentException("LET command must contain KEY.");
             }
-            // Remove the LET keyword and white space = "newTableName KEY keyAttribute
-            // SELECT ..."
+            // Remove the LET keyword and white space = "newTableName KEY keyAttr SELECT
+            // ..."
             input = input.substring(3).trim();
-
-            if (keyIndex == -1)
-                throw new IllegalArgumentException("LET must contain KEY.");
+            keyIndex = input.toUpperCase().indexOf("KEY"); // Update key index
 
             newTableName = input.substring(0, keyIndex).trim();
-            if (Pattern.compile("\s").matcher(newTableName).find()) {
-                throw new IllegalArgumentException("Table name must be one word");
+            if (newTableName.split("\s").length > 1) {
+                throw new IllegalArgumentException("Table name must be one word. Your name was: " + newTableName);
             }
             // After KEY = "keyAttribute SELECT ..."
             input = input.substring(keyIndex + 3).trim();
+            keyIndex = input.toUpperCase().indexOf("KEY");
 
             // Grab key attr and remaining SELECT string
             int selectIndex = input.toUpperCase().indexOf("SELECT");
@@ -299,7 +298,7 @@ public class CommandParser {
 
             keyAttribute = input.substring(0, selectIndex).trim();
 
-            if (Pattern.compile("\s").matcher(keyAttribute).find()) {
+            if (keyAttribute.split("\s").length > 1) {
                 throw new IllegalArgumentException("KEY name must be one word");
             }
             // After Key attr = "SELECT ..."
