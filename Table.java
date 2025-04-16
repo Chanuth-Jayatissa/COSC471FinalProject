@@ -171,10 +171,18 @@ public class Table implements Serializable {
     // ----------------- Advanced Condition Parsing -----------------
     
     /**
-     * Parses a condition string (which may be compound using AND/OR) and returns a Condition object.
+     * Parses a condition string (which may be compound using AND/OR and optionally enclosed in outer parentheses)
+     * and returns a Condition object.
      */
     private Condition parseCondition(String condStr) {
         condStr = condStr.trim();
+        
+        // Remove outer parentheses if present
+        if (condStr.startsWith("(") && condStr.endsWith(")")) {
+            // Check that parentheses are balanced before removing them (optional enhancement)
+            condStr = condStr.substring(1, condStr.length() - 1).trim();
+        }
+
         // Split by "or" (case-insensitive)
         String[] orParts = condStr.split("(?i)\\s+or\\s+");
         if (orParts.length > 1) {
@@ -193,7 +201,7 @@ public class Table implements Serializable {
             }
             return condition;
         }
-        // If no logical operator is found, it is a simple condition.
+        // If no logical operator is found, assume it is a simple condition.
         String[] tokens = condStr.split("\\s+");
         if (tokens.length < 3) {
             throw new IllegalArgumentException("Invalid condition: " + condStr);
