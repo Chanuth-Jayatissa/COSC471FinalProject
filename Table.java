@@ -140,7 +140,7 @@ public class Table implements Serializable {
     
     /**
      * Retrieves records that match the given condition.
-     * If the table has a primary key with a BST index, the records are retrieved via an in-order traversal.
+     * If the table has a primary key with a BST index, records are retrieved via an in-order traversal.
      */
     public List<Record> select(String condition) {
         List<Record> result = new ArrayList<>();
@@ -168,141 +168,156 @@ public class Table implements Serializable {
         return recordMatchesCondition(record, condition);
     }
     
-    // ----------------- Condition Evaluation Helpers -----------------
+    // ----------------- Advanced Condition Parsing -----------------
     
     /**
-     * Evaluates a simple condition of the form "AttrName RelOp Constant" for a record.
+     * Parses a condition string (which may be compound using AND/OR) and returns a Condition object.
      */
-    private boolean recordMatchesCondition(Record record, String condition) {
-        String[] tokens = condition.trim().split("\\s+");
+    private Condition parseCondition(String condStr) {
+        condStr = condStr.trim();
+        // Split by "or" (case-insensitive)
+        String[] orParts = condStr.split("(?i)\\s+or\\s+");
+        if (orParts.length > 1) {
+            Condition condition = parseCondition(orParts[0]);
+            for (int i = 1; i < orParts.length; i++) {
+                condition = new CompoundCondition(condition, "OR", parseCondition(orParts[i]));
+            }
+            return condition;
+        }
+        // Split by "and" (case-insensitive)
+        String[] andParts = condStr.split("(?i)\\s+and\\s+");
+        if (andParts.length > 1) {
+            Condition condition = parseCondition(andParts[0]);
+            for (int i = 1; i < andParts.length; i++) {
+                condition = new CompoundCondition(condition, "AND", parseCondition(andParts[i]));
+            }
+            return condition;
+        }
+        // If no logical operator is found, it is a simple condition.
+        String[] tokens = condStr.split("\\s+");
         if (tokens.length < 3) {
-            System.out.println("Invalid condition format.");
-            return false;
+            throw new IllegalArgumentException("Invalid condition: " + condStr);
         }
-        String attrName = tokens[0];
-        String operator = tokens[1];
-        String constantValue = tokens[2].replaceAll("^\"|\"$", "");
-        
-        int attrIndex = -1;
-        Attribute attr = null;
-        for (int i = 0; i < attributes.size(); i++) {
-            if (attributes.get(i).getName().equalsIgnoreCase(attrName)) {
-                attrIndex = i;
-                attr = attributes.get(i);
-                break;
-            }
-        }
-        if (attrIndex == -1) {
-            System.out.println("Attribute " + attrName + " not found in table " + name);
-            return false;
-        }
-        Object recordValue = record.getValue(attrIndex);
-        if (attr.getDataType() == Attribute.DataType.INTEGER) {
-            try {
-                int recVal = Integer.parseInt(recordValue.toString());
-                int constVal = Integer.parseInt(constantValue);
-                return compareInts(recVal, operator, constVal);
-            } catch (NumberFormatException e) {
-                System.out.println("Error: Unable to parse integer in condition.");
-                return false;
-            }
-        } else if (attr.getDataType() == Attribute.DataType.FLOAT) {
-            try {
-                double recVal = Double.parseDouble(recordValue.toString());
-                double constVal = Double.parseDouble(constantValue);
-                return compareDoubles(recVal, operator, constVal);
-            } catch (NumberFormatException e) {
-                System.out.println("Error: Unable to parse float in condition.");
-                return false;
-            }
-        } else { // TEXT
-            String recVal = recordValue.toString();
-            return compareStrings(recVal, operator, constantValue);
-        }
+        return new SimpleCondition(tokens[0], tokens[1], tokens[2].replaceAll("^\"|\"$", ""));
     }
-    
-    private boolean compareInts(int a, String op, int b) {
-        switch (op) {
-            case "=": case "==":
-                return a == b;
-            case "!=":
-                return a != b;
-            case "<":
-                return a < b;
-            case "<=":
-                return a <= b;
-            case ">":
-                return a > b;
-            case ">=":
-                return a >= b;
-            default:
-                System.out.println("Invalid operator: " + op);
-                return false;
-        }
-    }
-    
-    private boolean compareDoubles(double a, String op, double b) {
-        switch (op) {
-            case "=": case "==":
-                return a == b;
-            case "!=":
-                return a != b;
-            case "<":
-                return a < b;
-            case "<=":
-                return a <= b;
-            case ">":
-                return a > b;
-            case ">=":
-                return a >= b;
-            default:
-                System.out.println("Invalid operator: " + op);
-                return false;
-        }
-    }
-    
-    private boolean compareStrings(String a, String op, String b) {
-        switch (op) {
-            case "=": case "==":
-                return a.equals(b);
-            case "!=":
-                return !a.equals(b);
-            case "<":
-                return a.compareTo(b) < 0;
-            case "<=":
-                return a.compareTo(b) <= 0;
-            case ">":
-                return a.compareTo(b) > 0;
-            case ">=":
-                return a.compareTo(b) >= 0;
-            default:
-                System.out.println("Invalid operator for strings: " + op);
-                return false;
-        }
-    }
-    // ----------------- End of Condition Evaluation Helpers -----------------
     
     /**
-     * Updates records in the table that match the given condition.
-     * It checks that the new values satisfy domain, entity integrity, and key constraints.
+     * Evaluates whether a record satisfies the condition string.
+     */
+    private boolean recordMatchesCondition(Record record, String conditionStr) {
+        try {
+            Condition condition = parseCondition(conditionStr);
+            return condition.evaluate(record, attributes);
+        } catch (Exception e) {
+            System.out.println("Error parsing condition: " + e.getMessage());
+            return false;
+        }
+    }
+    
+    private interface Condition {
+        boolean evaluate(Record record, List<Attribute> attributes);
+    }
+    
+    /**
+     * Class for evaluating simple conditions, e.g., "age > 20".
+     */
+    private class SimpleCondition implements Condition {
+        private String attrName;
+        private String operator;
+        private String constant;
+        
+        public SimpleCondition(String attrName, String operator, String constant) {
+            this.attrName = attrName;
+            this.operator = operator;
+            this.constant = constant;
+        }
+        
+        @Override
+        public boolean evaluate(Record record, List<Attribute> attributes) {
+            int attrIndex = -1;
+            Attribute attr = null;
+            for (int i = 0; i < attributes.size(); i++) {
+                if (attributes.get(i).getName().equalsIgnoreCase(attrName)) {
+                    attrIndex = i;
+                    attr = attributes.get(i);
+                    break;
+                }
+            }
+            if (attrIndex == -1) {
+                System.out.println("Attribute " + attrName + " not found.");
+                return false;
+            }
+            Object recordValue = record.getValue(attrIndex);
+            if (attr.getDataType() == Attribute.DataType.INTEGER) {
+                try {
+                    int recVal = Integer.parseInt(recordValue.toString());
+                    int constVal = Integer.parseInt(constant);
+                    return Table.compareInts(recVal, operator, constVal);
+                } catch (NumberFormatException e) {
+                    System.out.println("Error: Unable to parse integer in condition.");
+                    return false;
+                }
+            } else if (attr.getDataType() == Attribute.DataType.FLOAT) {
+                try {
+                    double recVal = Double.parseDouble(recordValue.toString());
+                    double constVal = Double.parseDouble(constant);
+                    return Table.compareDoubles(recVal, operator, constVal);
+                } catch (NumberFormatException e) {
+                    System.out.println("Error: Unable to parse float in condition.");
+                    return false;
+                }
+            } else { // TEXT
+                String recVal = recordValue.toString();
+                return Table.compareStrings(recVal, operator, constant);
+            }
+        }
+    }
+    
+    /**
+     * Class for evaluating compound conditions using "AND" or "OR".
+     */
+    private class CompoundCondition implements Condition {
+        private Condition left;
+        private String logicalOperator; // "AND" or "OR"
+        private Condition right;
+        
+        public CompoundCondition(Condition left, String logicalOperator, Condition right) {
+            this.left = left;
+            this.logicalOperator = logicalOperator;
+            this.right = right;
+        }
+        
+        @Override
+        public boolean evaluate(Record record, List<Attribute> attributes) {
+            if (logicalOperator.equalsIgnoreCase("AND")) {
+                return left.evaluate(record, attributes) && right.evaluate(record, attributes);
+            } else if (logicalOperator.equalsIgnoreCase("OR")) {
+                return left.evaluate(record, attributes) || right.evaluate(record, attributes);
+            } else {
+                return false;
+            }
+        }
+    }
+    // ----------------- End of Advanced Condition Parsing -----------------
+    
+    /**
+     * Updates records in the table that satisfy the given condition.
+     * Checks that the new values satisfy domain, entity integrity, and key constraints.
      *
-     * @param condition A string condition to select records (e.g., "id = 2").
-     * @param updatedValues A Record object containing new values for the update.
+     * @param condition A condition (e.g., "id = 2") to select records.
+     * @param updatedValues A Record containing new values for the update.
      * @return The number of records updated.
      */
     public int update(String condition, Record updatedValues) {
         int updatedCount = 0;
-        // Iterate over each record.
         for (Record record : records) {
             if (condition == null || condition.trim().isEmpty() || recordMatchesCondition(record, condition)) {
                 List<Object> currentVals = record.getValues();
                 List<Attribute> attrs = attributes;
                 List<Object> newVals = updatedValues.getValues();
-                // For each attribute position provided in updatedValues,
-                // update the record only if a new value is present.
                 for (int i = 0; i < newVals.size(); i++) {
                     Object newVal = newVals.get(i);
-                    if (newVal == null) continue; // Skip update for this attribute
+                    if (newVal == null) continue; // Skip if no update for this attribute.
                     
                     Attribute attr = attrs.get(i);
                     
@@ -341,10 +356,9 @@ public class Table implements Serializable {
                             System.out.println("Error: Duplicate primary key value: " + newVal);
                             continue;
                         }
-                        // (Note: A full update would remove the old key and re-insert the new key into the BST.)
+                        // In a full implementation, remove the old key and reinsert the new key into the BST.
                     }
                     
-                    // If all checks pass, update the attribute's value.
                     currentVals.set(i, newVal);
                 }
                 updatedCount++;
@@ -429,7 +443,7 @@ public class Table implements Serializable {
     }
     
     /**
-     * Inner class representing an Attribute.
+     * Inner class representing an attribute (column) of the table.
      */
     public static class Attribute implements Serializable {
         private static final long serialVersionUID = 1L;
@@ -463,9 +477,76 @@ public class Table implements Serializable {
             return primaryKey;
         }
     }
+
+    // ----------------- Static Helper Methods for Comparisons -----------------
+
+    private static boolean compareInts(int a, String op, int b) {
+        switch (op) {
+            case "=":
+            case "==":
+                return a == b;
+            case "!=":
+                return a != b;
+            case "<":
+                return a < b;
+            case "<=":
+                return a <= b;
+            case ">":
+                return a > b;
+            case ">=":
+                return a >= b;
+            default:
+                System.out.println("Invalid operator: " + op);
+                return false;
+        }
+    }
+
+    private static boolean compareDoubles(double a, String op, double b) {
+        switch (op) {
+            case "=":
+            case "==":
+                return a == b;
+            case "!=":
+                return a != b;
+            case "<":
+                return a < b;
+            case "<=":
+                return a <= b;
+            case ">":
+                return a > b;
+            case ">=":
+                return a >= b;
+            default:
+                System.out.println("Invalid operator: " + op);
+                return false;
+        }
+    }
+
+    private static boolean compareStrings(String a, String op, String b) {
+        switch (op) {
+            case "=":
+            case "==":
+                return a.equals(b);
+            case "!=":
+                return !a.equals(b);
+            case "<":
+                return a.compareTo(b) < 0;
+            case "<=":
+                return a.compareTo(b) <= 0;
+            case ">":
+                return a.compareTo(b) > 0;
+            case ">=":
+                return a.compareTo(b) >= 0;
+            default:
+                System.out.println("Invalid operator for strings: " + op);
+                return false;
+        }
+    }
+    // ----------------- End of Static Helper Methods -----------------
+
     
     /**
-     * Inner class representing a Record (tuple) in the table.
+     * Inner class representing a record (tuple) in the table.
      */
     public static class Record implements Serializable {
         private static final long serialVersionUID = 1L;
