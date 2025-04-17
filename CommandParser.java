@@ -555,15 +555,26 @@ public class CommandParser {
                 return;
             int deletedCount = 0;
             java.util.Iterator<Table.Record> iter = table.getRecords().iterator();
+
+            // No WHERE clause -> delete entire table and contents
+            if (condition.isEmpty()) {
+                dbms.getCurrentDatabase().deleteTable(tableName);
+                System.out.println("Table '" + tableName + "' and all its records were deleted.");
+                return;
+            }
+            // Remove tuples according to WHERE clause
             while (iter.hasNext()) {
                 Table.Record record = iter.next();
-                if (condition.isEmpty() || table.matchesCondition(record, condition)) {
+
+                // Removes record if it meets the condition
+                if (table.matchesCondition(record, condition)) {
                     iter.remove();
                     deletedCount++;
                 }
             }
             System.out.println(deletedCount + " record(s) deleted from table '" + tableName + "'.");
         }
+
     }
 
     public static class InputCommand implements DBMS.Command {
