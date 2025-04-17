@@ -1,3 +1,9 @@
+# Team Member Names
+Chanuth Jayatissa
+Benjamin SMith
+Maksim Spitsyn
+Jonathan Mock
+
 # DATABASE PROJECT
 
 **DATABASE PROJECT – 100 points**
