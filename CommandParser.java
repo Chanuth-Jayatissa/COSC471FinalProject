@@ -2,7 +2,6 @@ import java.util.regex.Pattern;
 import java.util.ArrayList;
 import java.util.List;
 
-
 public class CommandParser {
 
     /**
@@ -197,14 +196,14 @@ public class CommandParser {
         private java.util.List<String> columns = new java.util.ArrayList<>();
         private java.util.List<String> tableNames = new java.util.ArrayList<>();
         private String condition = "";
-        
+
         /**
          * Expected format (simplified):
-         *   SELECT col1, col2, ... FROM tableName1 [, tableName2, ...] [WHERE condition]
+         * SELECT col1, col2, ... FROM tableName1 [, tableName2, ...] [WHERE condition]
          */
         public SelectCommand(String input) throws Exception {
             String remainder = input.substring("SELECT".length()).trim();
-            
+
             int fromIndex = remainder.toUpperCase().indexOf("FROM");
             if (fromIndex == -1) {
                 throw new IllegalArgumentException("SELECT command must contain FROM clause.");
@@ -232,7 +231,7 @@ public class CommandParser {
                 tableNames.add(table.trim());
             }
         }
-        
+
         @Override
         public void execute(DBMS dbms) {
             if (dbms.getCurrentDatabase() == null) {
@@ -244,7 +243,7 @@ public class CommandParser {
                 List<List<Table.Record>> listOfRecordLists = new ArrayList<>();
                 // Build a combined schema with qualified attribute names.
                 List<Table.Attribute> combinedSchema = new ArrayList<>();
-                
+
                 for (String tName : tableNames) {
                     Table t = dbms.getCurrentDatabase().getTable(tName);
                     if (t == null) {
@@ -254,13 +253,14 @@ public class CommandParser {
                     listOfRecordLists.add(t.getRecords());
                     for (Table.Attribute attr : t.getAttributes()) {
                         // Qualify attribute name with table name.
-                        combinedSchema.add(new Table.Attribute(tName + "." + attr.getName(), attr.getDataType(), attr.isPrimaryKey()));
+                        combinedSchema.add(new Table.Attribute(tName + "." + attr.getName(), attr.getDataType(),
+                                attr.isPrimaryKey()));
                     }
                 }
-                
+
                 // Compute the Cartesian product (join).
                 List<Table.Record> joinedRecords = cartesianProduct(listOfRecordLists);
-                
+
                 // Filter the joined records if a condition is provided.
                 List<Table.Record> finalRecords = new ArrayList<>();
                 if (condition != null && !condition.trim().isEmpty()) {
@@ -273,8 +273,9 @@ public class CommandParser {
                 } else {
                     finalRecords = joinedRecords;
                 }
-                
-                // For simplicity, assume that the SELECT list columns refer to the names in the combined schema.
+
+                // For simplicity, assume that the SELECT list columns refer to the names in the
+                // combined schema.
                 System.out.println(String.join("\t", columns));
                 int count = 1;
                 for (Table.Record rec : finalRecords) {
@@ -296,7 +297,8 @@ public class CommandParser {
                 // Single table select (existing behavior)
                 String tableName = tableNames.get(0);
                 Table table = dbms.getCurrentDatabase().getTable(tableName);
-                if (table == null) return;
+                if (table == null)
+                    return;
                 java.util.List<Table.Record> records = table.select(condition);
                 if (records.isEmpty()) {
                     System.out.println("Nothing found.");
@@ -340,8 +342,9 @@ public class CommandParser {
             cartesianProductHelper(listOfRecordLists, 0, new ArrayList<>(), result);
             return result;
         }
-        
-        private void cartesianProductHelper(List<List<Table.Record>> listOfRecordLists, int index, List<Object> current, List<Table.Record> result) {
+
+        private void cartesianProductHelper(List<List<Table.Record>> listOfRecordLists, int index, List<Object> current,
+                List<Table.Record> result) {
             if (index == listOfRecordLists.size()) {
                 result.add(new Table.Record(new ArrayList<>(current)));
                 return;
@@ -355,15 +358,17 @@ public class CommandParser {
                 }
             }
         }
-        
+
         /**
          * Evaluates a condition on a joined record given the combined schema.
          * For simplicity, this uses the same condition parser from Table.
          */
-        private boolean evaluateConditionOnJoinedRecord(Table.Record record, List<Table.Attribute> combinedSchema, String conditionStr) {
+        private boolean evaluateConditionOnJoinedRecord(Table.Record record, List<Table.Attribute> combinedSchema,
+                String conditionStr) {
             try {
                 // Use the existing parseCondition method from the Table instance.
-                // For this evaluation, we pass the combinedSchema in place of Table's own schema.
+                // For this evaluation, we pass the combinedSchema in place of Table's own
+                // schema.
                 Table.Condition condition = Table.parseCondition(conditionStr, combinedSchema);
                 return condition.evaluate(record, combinedSchema);
             } catch (Exception e) {
@@ -371,7 +376,7 @@ public class CommandParser {
                 return false;
             }
         }
-        
+
         /**
          * Finds the index of the column in the combined schema.
          */
@@ -440,26 +445,72 @@ public class CommandParser {
             System.out.println("Executing LET command: storing result into table '"
                     + newTableName + "' with key '" + keyAttribute + "'.");
 
-            // Reference for the table the select command referenced
-            Table sourceTable = dbms.getCurrentDatabase().getTable(selectCommand.tableName);
+            // Reference for the tables the select command referenced
+            List<String> tableNames = selectCommand.tableNames;
+            List<Table> sourceTables = new ArrayList<>();
 
-            // Checks if select operation properly selected a table
-            if (sourceTable == null) {
-                System.out.println("Error: Source table '" + selectCommand.tableName + "' does not exist.");
-                return;
+            // Loop through source table list, adding tables to the internal list and
+            // ensuring names are correct
+            for (String tableName : tableNames) {
+                Table table = dbms.getCurrentDatabase().getTable(tableName);
+                if (table == null) {
+                    System.out.println("Error: Source table '" + tableName + "' does not exist.");
+                    return;
+                }
+                sourceTables.add(table);
             }
 
-            // Not sure if this works properly
-            java.util.List<Table.Record> selectedRecords = sourceTable.select(selectCommand.condition);
+            // The new table, created by let command
+            List<Table.Attribute> combinedSchema = new ArrayList<>();
+
+            // For all tables in tableNames
+            for (int i = 0; i < tableNames.size(); i++) {
+                String tableName = tableNames.get(i);
+                Table table = sourceTables.get(i);
+
+                // For each attribute in the table
+                for (Table.Attribute attr : table.getAttributes()) {
+
+                    // Add attribute to new table
+                    combinedSchema
+                            .add(new Table.Attribute(tableName + "." + attr.getName(), attr.getDataType(), false));
+                }
+            }
+
+            List<List<Table.Record>> listOfRecordLists = new ArrayList<>();
+
+            // For each table in the source, add to the list of record lists
+            for (Table table : sourceTables) {
+                listOfRecordLists.add(table.getRecords());
+            }
+
+            // Joining the records
+            List<Table.Record> joinedRecords = selectCommand.cartesianProduct(listOfRecordLists);
+
+            List<Table.Record> selectedRecords = new ArrayList<>();
+
+            // Apply WHERE condition if it exists
+            if (!selectCommand.condition.isEmpty()) {
+                // For each record in joined records
+                for (Table.Record rec : joinedRecords) {
+                    // If it follows the condition, add it to selected records
+                    if (selectCommand.evaluateConditionOnJoinedRecord(rec, combinedSchema, selectCommand.condition)) {
+                        selectedRecords.add(rec);
+                    }
+                }
+            } else {
+                // All records are selected
+                selectedRecords = joinedRecords;
+            }
 
             // Build the new schema using the selected columns
-            java.util.List<Table.Attribute> originalAttrs = sourceTable.getAttributes();
             java.util.List<Table.Attribute> newAttrs = new java.util.ArrayList<>();
             boolean keyFound = false;
 
             // For each column and attribute,
             for (String col : selectCommand.columns) {
-                for (Table.Attribute attr : originalAttrs) {
+                for (Table.Attribute attr : combinedSchema) {
+
                     // If attribute name = column name,
                     if (attr.getName().equalsIgnoreCase(col)) {
                         // then see if this attribute is the key attribute referenced in LET command
@@ -485,19 +536,18 @@ public class CommandParser {
             for (Table.Record oldRecord : selectedRecords) {
                 java.util.List<Object> targetValues = new java.util.ArrayList<>(); // Values we want to keep
                 java.util.List<Object> oldValues = oldRecord.getValues(); // full list of values from original record
-                java.util.List<Table.Attribute> sourceAttrs = sourceTable.getAttributes(); // Copying original schema
 
                 // For each column in select statement
                 for (String col : selectCommand.columns) {
-                    // Find the matching attribute in the source
-                    for (int i = 0; i < sourceAttrs.size(); i++) {
-                        if (sourceAttrs.get(i).getName().equalsIgnoreCase(col)) {
-                            // Add it to target
-                            targetValues.add(oldValues.get(i));
-                            break;
-                        }
+                    int idx = selectCommand.findIndexInCombinedSchema(combinedSchema, col);
+                    if (idx != -1 && idx < oldValues.size()) {
+                        // Add it to target
+                        targetValues.add(oldValues.get(idx));
+                    } else {
+                        targetValues.add(null);
                     }
                 }
+
                 // Insert the values
                 newTable.insert(new Table.Record(targetValues));
             }
