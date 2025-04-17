@@ -550,15 +550,30 @@ public class CommandParser {
 
         /**
          * Expected format:
-         * INSERT tableName VALUES (val1, val2, ..., valN)
+         * INSERT INTO tableName VALUES (val1, val2, ..., valN)
          */
         public InsertCommand(String input) throws Exception {
+            // strip off "INSERT"
             String remainder = input.substring("INSERT".length()).trim();
+        
+            // now enforce INTO
+            if (!remainder.toUpperCase().startsWith("INTO ")) {
+                throw new IllegalArgumentException(
+                    "INSERT command must be: INSERT INTO <table> VALUES (...);");
+            }
+            // skip the "INTO" token
+            remainder = remainder.substring(4).trim();
+        
+            // find VALUES
             int valuesIndex = remainder.toUpperCase().indexOf("VALUES");
             if (valuesIndex == -1) {
                 throw new IllegalArgumentException("INSERT command must contain VALUES.");
             }
+        
+            // tableName is what comes before VALUES
             tableName = remainder.substring(0, valuesIndex).trim();
+        
+            // parse the parenthesized values exactly as before
             String valuesPart = remainder.substring(valuesIndex + "VALUES".length()).trim();
             if (!valuesPart.startsWith("(") || !valuesPart.endsWith(")")) {
                 throw new IllegalArgumentException("VALUES must be enclosed in parentheses.");
