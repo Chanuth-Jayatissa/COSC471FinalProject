@@ -1,8 +1,10 @@
 # Team Member Names
-Chanuth Jayatissa
-Benjamin SMith
-Maksim Spitsyn
-Jonathan Mock
+Chanuth Jayatissa <br />
+Benjamin Smith <br />
+Maksim Spitsyn <br />
+Jonathan Mock <br />
+
+---
 
 # DATABASE PROJECT
 
