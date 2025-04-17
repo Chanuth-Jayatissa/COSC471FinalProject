@@ -171,120 +171,166 @@ public class Table implements Serializable {
     // ----------------- Advanced Condition Parsing -----------------
     
     /**
-     * Parses a condition string (which may be compound using AND/OR and optionally enclosed in outer parentheses)
-     * and returns a Condition object.
+     * Parses a condition string (which may be compound using AND/OR and optionally enclosed in parentheses)
+     * against the given schema, and returns a Condition object.
      */
-    private Condition parseCondition(String condStr) {
+    public static Condition parseCondition(String condStr, List<Attribute> schema) {
         condStr = condStr.trim();
-        
-        // Remove outer parentheses if present
-        if (condStr.startsWith("(") && condStr.endsWith(")")) {
-            // Check that parentheses are balanced before removing them (optional enhancement)
-            condStr = condStr.substring(1, condStr.length() - 1).trim();
-        }
-
-        // Split by "or" (case-insensitive)
-        String[] orParts = condStr.split("(?i)\\s+or\\s+");
-        if (orParts.length > 1) {
-            Condition condition = parseCondition(orParts[0]);
-            for (int i = 1; i < orParts.length; i++) {
-                condition = new CompoundCondition(condition, "OR", parseCondition(orParts[i]));
+        // 1) Strip one outermost pair of matching parentheses
+        while (condStr.startsWith("(") && condStr.endsWith(")")) {
+            int bal = 0, i = 0;
+            for (; i < condStr.length(); i++) {
+                char c = condStr.charAt(i);
+                if (c == '(') bal++;
+                else if (c == ')') bal--;
+                if (bal == 0) break;
             }
-            return condition;
-        }
-        // Split by "and" (case-insensitive)
-        String[] andParts = condStr.split("(?i)\\s+and\\s+");
-        if (andParts.length > 1) {
-            Condition condition = parseCondition(andParts[0]);
-            for (int i = 1; i < andParts.length; i++) {
-                condition = new CompoundCondition(condition, "AND", parseCondition(andParts[i]));
+            if (i == condStr.length() - 1) {
+                condStr = condStr.substring(1, condStr.length() - 1).trim();
+            } else {
+                break;
             }
-            return condition;
         }
-        // If no logical operator is found, assume it is a simple condition.
-        String[] tokens = condStr.split("\\s+");
-        if (tokens.length < 3) {
+    
+        // 2) Top‐level OR split
+        List<String> orParts = new ArrayList<>();
+        {
+            int depth = 0, last = 0;
+            for (int i = 0; i + 3 < condStr.length(); i++) {
+                char c = condStr.charAt(i);
+                if      (c == '(') depth++;
+                else if (c == ')') depth--;
+                else if (depth == 0
+                      && condStr.regionMatches(true, i, " or ", 0, 4)) {
+                    orParts.add(condStr.substring(last, i).trim());
+                    last = i + 4;
+                    i = last - 1;
+                }
+            }
+            orParts.add(condStr.substring(last).trim());
+        }
+        if (orParts.size() > 1) {
+            Condition c = parseCondition(orParts.get(0), schema);
+            for (int i = 1; i < orParts.size(); i++) {
+                c = new CompoundCondition(c, "OR", parseCondition(orParts.get(i), schema));
+            }
+            return c;
+        }
+    
+        // 3) Top‐level AND split
+        List<String> andParts = new ArrayList<>();
+        {
+            int depth = 0, last = 0;
+            for (int i = 0; i + 4 < condStr.length(); i++) {
+                char c = condStr.charAt(i);
+                if      (c == '(') depth++;
+                else if (c == ')') depth--;
+                else if (depth == 0
+                      && condStr.regionMatches(true, i, " and ", 0, 5)) {
+                    andParts.add(condStr.substring(last, i).trim());
+                    last = i + 5;
+                    i = last - 1;
+                }
+            }
+            andParts.add(condStr.substring(last).trim());
+        }
+        if (andParts.size() > 1) {
+            Condition c = parseCondition(andParts.get(0), schema);
+            for (int i = 1; i < andParts.size(); i++) {
+                c = new CompoundCondition(c, "AND", parseCondition(andParts.get(i), schema));
+            }
+            return c;
+        }
+    
+        // 4) simple “attr op const”
+        String[] tok = condStr.split("\\s+", 3);
+        if (tok.length != 3) {
             throw new IllegalArgumentException("Invalid condition: " + condStr);
         }
-        return new SimpleCondition(tokens[0], tokens[1], tokens[2].replaceAll("^\"|\"$", ""));
+        return new SimpleCondition(tok[0], tok[1], tok[2].replaceAll("^\"|\"$", ""), schema);
     }
     
+
     /**
      * Evaluates whether a record satisfies the condition string.
      */
     private boolean recordMatchesCondition(Record record, String conditionStr) {
         try {
-            Condition condition = parseCondition(conditionStr);
-            return condition.evaluate(record, attributes);
+            Condition condition = Table.parseCondition(conditionStr, this.attributes);
+            return condition.evaluate(record, this.attributes);
         } catch (Exception e) {
             System.out.println("Error parsing condition: " + e.getMessage());
             return false;
         }
     }
-    
-    private interface Condition {
+
+    public interface Condition {
         boolean evaluate(Record record, List<Attribute> attributes);
     }
+
+    private static class SimpleCondition implements Condition {
+        private final String leftAttr, operator, rightToken;
+        private final boolean rightIsAttr;
+        private final int leftIndex, rightIndex;     // if rightIsAttr
     
-    /**
-     * Class for evaluating simple conditions, e.g., "age > 20".
-     */
-    private class SimpleCondition implements Condition {
-        private String attrName;
-        private String operator;
-        private String constant;
-        
-        public SimpleCondition(String attrName, String operator, String constant) {
-            this.attrName = attrName;
-            this.operator = operator;
-            this.constant = constant;
-        }
-        
-        @Override
-        public boolean evaluate(Record record, List<Attribute> attributes) {
-            int attrIndex = -1;
-            Attribute attr = null;
-            for (int i = 0; i < attributes.size(); i++) {
-                if (attributes.get(i).getName().equalsIgnoreCase(attrName)) {
-                    attrIndex = i;
-                    attr = attributes.get(i);
+        public SimpleCondition(String leftAttr, String operator, String rightToken, List<Attribute> schema) {
+            this.leftAttr   = leftAttr;
+            this.operator   = operator;
+            this.rightToken = rightToken;
+    
+            // find left attribute index
+            int li = -1;
+            for (int i = 0; i < schema.size(); i++) {
+                if (schema.get(i).getName().equalsIgnoreCase(leftAttr)) {
+                    li = i;
                     break;
                 }
             }
-            if (attrIndex == -1) {
-                System.out.println("Attribute " + attrName + " not found.");
-                return false;
+            if (li < 0) throw new IllegalArgumentException("Attribute not found: " + leftAttr);
+            this.leftIndex = li;
+    
+            // is the rightToken an attribute name?
+            int ri = -1;
+            for (int i = 0; i < schema.size(); i++) {
+                if (schema.get(i).getName().equalsIgnoreCase(rightToken)) {
+                    ri = i;
+                    break;
+                }
             }
-            Object recordValue = record.getValue(attrIndex);
-            if (attr.getDataType() == Attribute.DataType.INTEGER) {
-                try {
-                    int recVal = Integer.parseInt(recordValue.toString());
-                    int constVal = Integer.parseInt(constant);
-                    return Table.compareInts(recVal, operator, constVal);
-                } catch (NumberFormatException e) {
-                    System.out.println("Error: Unable to parse integer in condition.");
+            this.rightIsAttr = ri >= 0;
+            this.rightIndex  = ri;
+        }
+    
+        @Override
+        public boolean evaluate(Record record, List<Attribute> schema) {
+            Attribute attr = schema.get(leftIndex);
+            // always pull raw strings
+            String leftRaw  = record.getValue(leftIndex).toString();
+            String rightRaw = rightIsAttr
+                ? record.getValue(rightIndex).toString()
+                : rightToken;
+    
+            switch (attr.getDataType()) {
+                case INTEGER:
+                    int lInt = Integer.parseInt(leftRaw);
+                    int rInt = Integer.parseInt(rightRaw);
+                    return Table.compareInts(lInt, operator, rInt);
+    
+                case FLOAT:
+                    double lDbl = Double.parseDouble(leftRaw);
+                    double rDbl = Double.parseDouble(rightRaw);
+                    return Table.compareDoubles(lDbl, operator, rDbl);
+    
+                case TEXT:
+                    return Table.compareStrings(leftRaw, operator, rightRaw);
+    
+                default:
                     return false;
-                }
-            } else if (attr.getDataType() == Attribute.DataType.FLOAT) {
-                try {
-                    double recVal = Double.parseDouble(recordValue.toString());
-                    double constVal = Double.parseDouble(constant);
-                    return Table.compareDoubles(recVal, operator, constVal);
-                } catch (NumberFormatException e) {
-                    System.out.println("Error: Unable to parse float in condition.");
-                    return false;
-                }
-            } else { // TEXT
-                String recVal = recordValue.toString();
-                return Table.compareStrings(recVal, operator, constant);
             }
         }
     }
-    
-    /**
-     * Class for evaluating compound conditions using "AND" or "OR".
-     */
-    private class CompoundCondition implements Condition {
+
+    private static class CompoundCondition implements Condition {
         private Condition left;
         private String logicalOperator; // "AND" or "OR"
         private Condition right;
