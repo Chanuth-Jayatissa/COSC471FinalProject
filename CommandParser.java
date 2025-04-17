@@ -517,8 +517,12 @@ public class CommandParser {
                         boolean isKey = attr.getName().equalsIgnoreCase(keyAttribute);
                         if (isKey)
                             keyFound = true;
-                        // add the key
-                        newAttrs.add(new Table.Attribute(attr.getName(), attr.getDataType(), isKey));
+
+                        // add the attribute, removing the prefixes, ie. student.name -> name
+                        String cleanName = attr.getName().contains(".")
+                                ? attr.getName().substring(attr.getName().indexOf(".") + 1)
+                                : attr.getName();
+                        newAttrs.add(new Table.Attribute(cleanName, attr.getDataType(), isKey));
                         break;
                     }
                 }
@@ -605,24 +609,24 @@ public class CommandParser {
         public InsertCommand(String input) throws Exception {
             // strip off "INSERT"
             String remainder = input.substring("INSERT".length()).trim();
-        
+
             // now enforce INTO
             if (!remainder.toUpperCase().startsWith("INTO ")) {
                 throw new IllegalArgumentException(
-                    "INSERT command must be: INSERT INTO <table> VALUES (...);");
+                        "INSERT command must be: INSERT INTO <table> VALUES (...);");
             }
             // skip the "INTO" token
             remainder = remainder.substring(4).trim();
-        
+
             // find VALUES
             int valuesIndex = remainder.toUpperCase().indexOf("VALUES");
             if (valuesIndex == -1) {
                 throw new IllegalArgumentException("INSERT command must contain VALUES.");
             }
-        
+
             // tableName is what comes before VALUES
             tableName = remainder.substring(0, valuesIndex).trim();
-        
+
             // parse the parenthesized values exactly as before
             String valuesPart = remainder.substring(valuesIndex + "VALUES".length()).trim();
             if (!valuesPart.startsWith("(") || !valuesPart.endsWith(")")) {
@@ -886,7 +890,14 @@ public class CommandParser {
                 if (recs.isEmpty()) {
                     System.out.println("Table '" + tableName + "' is empty.");
                 } else {
-                    System.out.println("Records of table '" + tableName + "':");
+                    System.out.println(
+                            "Records of table '" + tableName + "':" + "\n  ------------------------------------");
+                    // For each attribute the table has
+                    for (Table.Attribute attr : table.getAttributes()) {
+                        // Print out the header
+                        System.out.print("\t" + attr.getName());
+                    }
+                    System.out.println("\n  ------------------------------------");
                     int count = 1;
                     for (Table.Record r : recs) {
                         System.out.print(count + ".\t");
@@ -896,6 +907,7 @@ public class CommandParser {
                         System.out.println();
                         count++;
                     }
+                    System.out.println("  ------------------------------------");
                 }
             } else {
                 System.out.println("Invalid SHOW command parameter: " + subCommand);
