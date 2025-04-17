@@ -269,58 +269,62 @@ public class Table implements Serializable {
     }
 
     private static class SimpleCondition implements Condition {
-        private String attrName, operator, constant;
-        private List<Attribute> schema;
-        
-        public SimpleCondition(String attrName, String operator, String constant, List<Attribute> schema) {
-            this.attrName = attrName;
-            this.operator = operator;
-            this.constant = constant;
-            this.schema = schema;
-        }
-        
-        @Override
-        public boolean evaluate(Record record, List<Attribute> ignored) {
-            // We ignore the passed-in attributes list and use our saved schema.
-            int attrIndex = -1;
-            Attribute attr = null;
+        private final String leftAttr, operator, rightToken;
+        private final boolean rightIsAttr;
+        private final int leftIndex, rightIndex;     // if rightIsAttr
+    
+        public SimpleCondition(String leftAttr, String operator, String rightToken, List<Attribute> schema) {
+            this.leftAttr   = leftAttr;
+            this.operator   = operator;
+            this.rightToken = rightToken;
+    
+            // find left attribute index
+            int li = -1;
             for (int i = 0; i < schema.size(); i++) {
-                if (schema.get(i).getName().equalsIgnoreCase(attrName)) {
-                    attrIndex = i;
-                    attr = schema.get(i);
+                if (schema.get(i).getName().equalsIgnoreCase(leftAttr)) {
+                    li = i;
                     break;
                 }
             }
-            if (attrIndex == -1) {
-                System.out.println("Attribute not found: " + attrName);
-                return false;
-            }
+            if (li < 0) throw new IllegalArgumentException("Attribute not found: " + leftAttr);
+            this.leftIndex = li;
     
-            Object recordValue = record.getValue(attrIndex);
+            // is the rightToken an attribute name?
+            int ri = -1;
+            for (int i = 0; i < schema.size(); i++) {
+                if (schema.get(i).getName().equalsIgnoreCase(rightToken)) {
+                    ri = i;
+                    break;
+                }
+            }
+            this.rightIsAttr = ri >= 0;
+            this.rightIndex  = ri;
+        }
+    
+        @Override
+        public boolean evaluate(Record record, List<Attribute> schema) {
+            Attribute attr = schema.get(leftIndex);
+            // always pull raw strings
+            String leftRaw  = record.getValue(leftIndex).toString();
+            String rightRaw = rightIsAttr
+                ? record.getValue(rightIndex).toString()
+                : rightToken;
+    
             switch (attr.getDataType()) {
                 case INTEGER:
-                    try {
-                        int recVal   = Integer.parseInt(recordValue.toString());
-                        int constVal = Integer.parseInt(constant);
-                        return Table.compareInts(recVal, operator, constVal);
-                    } catch (NumberFormatException e) {
-                        System.out.println("Error parsing integer in condition: " + e.getMessage());
-                        return false;
-                    }
+                    int lInt = Integer.parseInt(leftRaw);
+                    int rInt = Integer.parseInt(rightRaw);
+                    return Table.compareInts(lInt, operator, rInt);
+    
                 case FLOAT:
-                    try {
-                        double recVal   = Double.parseDouble(recordValue.toString());
-                        double constVal = Double.parseDouble(constant);
-                        return Table.compareDoubles(recVal, operator, constVal);
-                    } catch (NumberFormatException e) {
-                        System.out.println("Error parsing float in condition: " + e.getMessage());
-                        return false;
-                    }
+                    double lDbl = Double.parseDouble(leftRaw);
+                    double rDbl = Double.parseDouble(rightRaw);
+                    return Table.compareDoubles(lDbl, operator, rDbl);
+    
                 case TEXT:
-                    String recStr = recordValue.toString();
-                    return Table.compareStrings(recStr, operator, constant);
+                    return Table.compareStrings(leftRaw, operator, rightRaw);
+    
                 default:
-                    System.out.println("Unsupported data type in condition.");
                     return false;
             }
         }
