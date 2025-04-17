@@ -1,5 +1,7 @@
+import java.util.regex.Pattern;
 import java.util.ArrayList;
 import java.util.List;
+
 
 public class CommandParser {
 
@@ -54,29 +56,30 @@ public class CommandParser {
             throw new UnsupportedOperationException("Command not supported: " + input);
         }
     }
-    
+
     // -------------------- Command Inner Classes --------------------
-    
+
     public static class CreateDatabaseCommand implements DBMS.Command {
         private String dbName;
-        
+
         public CreateDatabaseCommand(String dbName) {
             this.dbName = dbName;
         }
-        
+
         @Override
         public void execute(DBMS dbms) {
             dbms.createDatabase(dbName);
         }
     }
-    
+
     public static class CreateTableCommand implements DBMS.Command {
         private String tableName;
         private java.util.List<Table.Attribute> attributes = new java.util.ArrayList<>();
-        
+
         /**
          * Expected format:
-         *   CREATE TABLE tableName ( attrName dataType [PRIMARY KEY], attrName dataType, ... )
+         * CREATE TABLE tableName ( attrName dataType [PRIMARY KEY], attrName dataType,
+         * ... )
          */
         public CreateTableCommand(String input) throws Exception {
             String remainder = input.substring("CREATE TABLE".length()).trim();
@@ -117,7 +120,7 @@ public class CommandParser {
                 attributes.add(new Table.Attribute(attrName, dataType, primaryKey));
             }
         }
-        
+
         @Override
         public void execute(DBMS dbms) {
             if (dbms.getCurrentDatabase() == null) {
@@ -128,28 +131,28 @@ public class CommandParser {
             dbms.getCurrentDatabase().addTable(tableName, newTable);
         }
     }
-    
+
     public static class UseDatabaseCommand implements DBMS.Command {
         private String dbName;
-        
+
         public UseDatabaseCommand(String dbName) {
             this.dbName = dbName;
         }
-        
+
         @Override
         public void execute(DBMS dbms) {
             dbms.useDatabase(dbName);
         }
     }
-    
+
     public static class DescribeCommand implements DBMS.Command {
         private boolean describeAll;
         private String tableName;
-        
+
         /**
          * Supports:
-         *   DESCRIBE ALL
-         *   DESCRIBE tableName
+         * DESCRIBE ALL
+         * DESCRIBE tableName
          */
         public DescribeCommand(String input) {
             String remainder = input.substring("DESCRIBE".length()).trim();
@@ -160,7 +163,7 @@ public class CommandParser {
                 tableName = remainder;
             }
         }
-        
+
         @Override
         public void execute(DBMS dbms) {
             if (dbms.getCurrentDatabase() == null) {
@@ -177,7 +180,7 @@ public class CommandParser {
                     printTableSchema(t);
             }
         }
-        
+
         private void printTableSchema(Table table) {
             System.out.println("Table: " + table.getName());
             for (Table.Attribute attr : table.getAttributes()) {
@@ -189,7 +192,7 @@ public class CommandParser {
             }
         }
     }
-    
+
     public static class SelectCommand implements DBMS.Command {
         private java.util.List<String> columns = new java.util.ArrayList<>();
         private java.util.List<String> tableNames = new java.util.ArrayList<>();
@@ -206,12 +209,14 @@ public class CommandParser {
             if (fromIndex == -1) {
                 throw new IllegalArgumentException("SELECT command must contain FROM clause.");
             }
+
             // Parse SELECT columns.
             String colsPart = remainder.substring(0, fromIndex).trim();
             String[] cols = colsPart.split(",");
             for (String col : cols) {
                 columns.add(col.trim());
             }
+
             // Parse the FROM part.
             String afterFrom = remainder.substring(fromIndex + "FROM".length()).trim();
             int whereIndex = afterFrom.toUpperCase().indexOf("WHERE");
@@ -322,7 +327,7 @@ public class CommandParser {
                 }
             }
         }
-        
+
         /**
          * Computes the Cartesian product (cross join) of a list of record lists.
          */
@@ -380,61 +385,136 @@ public class CommandParser {
         }
     }
 
-    
     public static class LetCommand implements DBMS.Command {
         private String newTableName;
         private String keyAttribute;
         private SelectCommand selectCommand;
-        
+
         /**
          * Expected format:
-         *   LET newTableName KEY keyAttribute <SELECT ...>
+         * LET newTableName KEY keyAttribute SELECT ...
          */
         public LetCommand(String input) throws Exception {
+            input = input.trim(); // Remove excess white space on ends
             int keyIndex = input.toUpperCase().indexOf("KEY");
             if (keyIndex == -1) {
                 throw new IllegalArgumentException("LET command must contain KEY.");
             }
-            String beforeKey = input.substring("LET".length(), keyIndex).trim();
-            newTableName = beforeKey;
-            int ltIndex = input.indexOf("<");
-            int gtIndex = input.lastIndexOf(">");
-            if (ltIndex == -1 || gtIndex == -1 || gtIndex <= ltIndex) {
-                throw new IllegalArgumentException("LET command must contain a SELECT statement enclosed in <>.");
+            // Remove the LET keyword and white space = "newTableName KEY keyAttr SELECT
+            // ..."
+            input = input.substring(3).trim();
+            keyIndex = input.toUpperCase().indexOf("KEY"); // Update key index
+
+            newTableName = input.substring(0, keyIndex).trim();
+            if (newTableName.split("\s").length > 1) {
+                throw new IllegalArgumentException("Table name must be one word. Your name was: " + newTableName);
             }
-            String keyPart = input.substring(keyIndex + "KEY".length(), ltIndex).trim();
-            keyAttribute = keyPart;
-            String selectStr = input.substring(ltIndex + 1, gtIndex).trim();
-            if (!selectStr.toUpperCase().startsWith("SELECT")) {
-                throw new IllegalArgumentException("LET command must contain a SELECT operation within <>.");
+            // After KEY = "keyAttribute SELECT ..."
+            input = input.substring(keyIndex + 3).trim();
+            keyIndex = input.toUpperCase().indexOf("KEY");
+
+            // Grab key attr and remaining SELECT string
+            int selectIndex = input.toUpperCase().indexOf("SELECT");
+            if (selectIndex == -1) {
+                throw new IllegalArgumentException("LET command must contain a SELECT operation.");
             }
-            selectCommand = new SelectCommand(selectStr);
+
+            keyAttribute = input.substring(0, selectIndex).trim();
+
+            if (keyAttribute.split("\s").length > 1) {
+                throw new IllegalArgumentException("KEY name must be one word");
+            }
+            // After Key attr = "SELECT ..."
+            input = input.substring(selectIndex).trim();
+
+            // Now to send the select command to the parser
+            selectCommand = new SelectCommand(input);
         }
-        
+
         @Override
         public void execute(DBMS dbms) {
             if (dbms.getCurrentDatabase() == null) {
                 System.out.println("Error: No database selected.");
                 return;
             }
-            System.out.println("Executing LET command: storing result into table '" 
-                + newTableName + "' with key '" + keyAttribute + "'.");
-            // In a full implementation, the SELECT operation would produce a result set.
-            // Here, we simulate by creating an empty table with a dummy schema containing the key attribute.
-            java.util.List<Table.Attribute> dummySchema = new java.util.ArrayList<>();
-            dummySchema.add(new Table.Attribute(keyAttribute, Table.Attribute.DataType.TEXT, true));
-            Table newTable = new Table(newTableName, dummySchema);
+            System.out.println("Executing LET command: storing result into table '"
+                    + newTableName + "' with key '" + keyAttribute + "'.");
+
+            // Reference for the table the select command referenced
+            Table sourceTable = dbms.getCurrentDatabase().getTable(selectCommand.tableName);
+
+            // Checks if select operation properly selected a table
+            if (sourceTable == null) {
+                System.out.println("Error: Source table '" + selectCommand.tableName + "' does not exist.");
+                return;
+            }
+
+            // Not sure if this works properly
+            java.util.List<Table.Record> selectedRecords = sourceTable.select(selectCommand.condition);
+
+            // Build the new schema using the selected columns
+            java.util.List<Table.Attribute> originalAttrs = sourceTable.getAttributes();
+            java.util.List<Table.Attribute> newAttrs = new java.util.ArrayList<>();
+            boolean keyFound = false;
+
+            // For each column and attribute,
+            for (String col : selectCommand.columns) {
+                for (Table.Attribute attr : originalAttrs) {
+                    // If attribute name = column name,
+                    if (attr.getName().equalsIgnoreCase(col)) {
+                        // then see if this attribute is the key attribute referenced in LET command
+                        boolean isKey = attr.getName().equalsIgnoreCase(keyAttribute);
+                        if (isKey)
+                            keyFound = true;
+                        // add the key
+                        newAttrs.add(new Table.Attribute(attr.getName(), attr.getDataType(), isKey));
+                        break;
+                    }
+                }
+            }
+            // If the key is not in the select result
+            if (!keyFound) {
+                System.out.println("Error: Key attribute '" + keyAttribute + "' not found in SELECT result.");
+                return;
+            }
+
+            // Create the new table
+            Table newTable = new Table(newTableName, newAttrs);
+
+            // Loop through each record matching the select query
+            for (Table.Record oldRecord : selectedRecords) {
+                java.util.List<Object> targetValues = new java.util.ArrayList<>(); // Values we want to keep
+                java.util.List<Object> oldValues = oldRecord.getValues(); // full list of values from original record
+                java.util.List<Table.Attribute> sourceAttrs = sourceTable.getAttributes(); // Copying original schema
+
+                // For each column in select statement
+                for (String col : selectCommand.columns) {
+                    // Find the matching attribute in the source
+                    for (int i = 0; i < sourceAttrs.size(); i++) {
+                        if (sourceAttrs.get(i).getName().equalsIgnoreCase(col)) {
+                            // Add it to target
+                            targetValues.add(oldValues.get(i));
+                            break;
+                        }
+                    }
+                }
+                // Insert the values
+                newTable.insert(new Table.Record(targetValues));
+            }
+            // Add the table to the database
             dbms.getCurrentDatabase().addTable(newTableName, newTable);
+            System.out.println("LET: Table '" + newTableName + "' created with " +
+                    newTable.getRecords().size() + " record(s).");
         }
     }
-    
+
     public static class RenameCommand implements DBMS.Command {
         private String tableName;
         private java.util.List<String> newNames = new java.util.ArrayList<>();
-        
+
         /**
          * Expected format:
-         *   RENAME tableName (newAttr1, newAttr2, ...)
+         * RENAME tableName (newAttr1, newAttr2, ...)
          */
         public RenameCommand(String input) throws Exception {
             String remainder = input.substring("RENAME".length()).trim();
@@ -450,7 +530,7 @@ public class CommandParser {
                 newNames.add(name.trim());
             }
         }
-        
+
         @Override
         public void execute(DBMS dbms) {
             if (dbms.getCurrentDatabase() == null) {
@@ -458,18 +538,19 @@ public class CommandParser {
                 return;
             }
             Table table = dbms.getCurrentDatabase().getTable(tableName);
-            if (table == null) return;
+            if (table == null)
+                return;
             table.renameAttributes(newNames);
         }
     }
-    
+
     public static class InsertCommand implements DBMS.Command {
         private String tableName;
         private java.util.List<String> values = new java.util.ArrayList<>();
-        
+
         /**
          * Expected format:
-         *   INSERT tableName VALUES (val1, val2, ..., valN)
+         * INSERT tableName VALUES (val1, val2, ..., valN)
          */
         public InsertCommand(String input) throws Exception {
             String remainder = input.substring("INSERT".length()).trim();
@@ -488,7 +569,7 @@ public class CommandParser {
                 values.add(val.trim().replaceAll("^\"|\"$", ""));
             }
         }
-        
+
         @Override
         public void execute(DBMS dbms) {
             if (dbms.getCurrentDatabase() == null) {
@@ -496,20 +577,21 @@ public class CommandParser {
                 return;
             }
             Table table = dbms.getCurrentDatabase().getTable(tableName);
-            if (table == null) return;
+            if (table == null)
+                return;
             Table.Record record = new Table.Record(new java.util.ArrayList<Object>(values));
             table.insert(record);
         }
     }
-    
+
     public static class UpdateCommand implements DBMS.Command {
         private String tableName;
         private java.util.Map<String, String> updates = new java.util.HashMap<>();
         private String condition = "";
-        
+
         /**
          * Expected format:
-         *   UPDATE tableName SET attr=value [, attr=value]* [WHERE condition]
+         * UPDATE tableName SET attr=value [, attr=value]* [WHERE condition]
          */
         public UpdateCommand(String input) throws Exception {
             String remainder = input.substring("UPDATE".length()).trim();
@@ -535,7 +617,7 @@ public class CommandParser {
                 updates.put(attr, val);
             }
         }
-        
+
         @Override
         public void execute(DBMS dbms) {
             if (dbms.getCurrentDatabase() == null) {
@@ -543,7 +625,8 @@ public class CommandParser {
                 return;
             }
             Table table = dbms.getCurrentDatabase().getTable(tableName);
-            if (table == null) return;
+            if (table == null)
+                return;
             int updatedCount = 0;
             for (Table.Record record : table.getRecords()) {
                 if (condition.isEmpty() || table.matchesCondition(record, condition)) {
@@ -563,14 +646,14 @@ public class CommandParser {
             System.out.println(updatedCount + " record(s) updated in table '" + tableName + "'.");
         }
     }
-    
+
     public static class DeleteCommand implements DBMS.Command {
         private String tableName;
         private String condition = "";
-        
+
         /**
          * Expected format:
-         *   DELETE tableName [WHERE condition]
+         * DELETE tableName [WHERE condition]
          */
         public DeleteCommand(String input) throws Exception {
             String remainder = input.substring("DELETE".length()).trim();
@@ -583,7 +666,7 @@ public class CommandParser {
                 condition = remainder.substring(whereIndex + "WHERE".length()).trim();
             }
         }
-        
+
         @Override
         public void execute(DBMS dbms) {
             if (dbms.getCurrentDatabase() == null) {
@@ -595,24 +678,35 @@ public class CommandParser {
                 return;
             int deletedCount = 0;
             java.util.Iterator<Table.Record> iter = table.getRecords().iterator();
+
+            // No WHERE clause -> delete entire table and contents
+            if (condition.isEmpty()) {
+                dbms.getCurrentDatabase().deleteTable(tableName);
+                System.out.println("Table '" + tableName + "' and all its records were deleted.");
+                return;
+            }
+            // Remove tuples according to WHERE clause
             while (iter.hasNext()) {
                 Table.Record record = iter.next();
-                if (condition.isEmpty() || table.matchesCondition(record, condition)) {
+
+                // Removes record if it meets the condition
+                if (table.matchesCondition(record, condition)) {
                     iter.remove();
                     deletedCount++;
                 }
             }
             System.out.println(deletedCount + " record(s) deleted from table '" + tableName + "'.");
         }
+
     }
-    
+
     public static class InputCommand implements DBMS.Command {
         private String inputFile;
-        private String outputFile;  // May be null.
-        
+        private String outputFile; // May be null.
+
         /**
          * Expected format:
-         *   INPUT fileName1 [OUTPUT fileName2]
+         * INPUT fileName1 [OUTPUT fileName2]
          */
         public InputCommand(String input) throws Exception {
             String remainder = input.substring("INPUT".length()).trim();
@@ -628,7 +722,7 @@ public class CommandParser {
                 outputFile = tokens[2];
             }
         }
-        
+
         @Override
         public void execute(DBMS dbms) throws Exception {
             java.util.List<String> commands = FileManager.readCommands(inputFile);
@@ -640,7 +734,7 @@ public class CommandParser {
                     outBuilder.append("Executed: ").append(cmdStr).append("\n");
                 } catch (Exception e) {
                     outBuilder.append("Error executing command: ").append(cmdStr)
-                              .append(" - ").append(e.getMessage()).append("\n");
+                            .append(" - ").append(e.getMessage()).append("\n");
                 }
             }
             if (outputFile != null) {
@@ -649,7 +743,7 @@ public class CommandParser {
             }
         }
     }
-    
+
     public static class ExitCommand implements DBMS.Command {
         @Override
         public void execute(DBMS dbms) {
@@ -658,23 +752,24 @@ public class CommandParser {
             System.exit(0);
         }
     }
-    
+
     // -------------------- New Show Command --------------------
     /**
      * The SHOW command supports:
-     *   SHOW DATABASES;
-     *   SHOW TABLES;
-     *   SHOW RECORDS tableName;
+     * SHOW DATABASES;
+     * SHOW TABLES;
+     * SHOW RECORDS tableName;
      */
     public static class ShowCommand implements DBMS.Command {
         private String subCommand;
-        private String tableName;  // Used only if subCommand is RECORDS.
-        
+        private String tableName; // Used only if subCommand is RECORDS.
+
         public ShowCommand(String input) throws Exception {
             // Remove the "SHOW" keyword.
             String remainder = input.substring("SHOW".length()).trim();
             if (remainder.isEmpty()) {
-                throw new IllegalArgumentException("SHOW command requires parameters (e.g., DATABASES, TABLES, RECORDS <tableName>).");
+                throw new IllegalArgumentException(
+                        "SHOW command requires parameters (e.g., DATABASES, TABLES, RECORDS <tableName>).");
             }
             String[] parts = remainder.split("\\s+");
             subCommand = parts[0].toUpperCase();
@@ -685,7 +780,7 @@ public class CommandParser {
                 tableName = parts[1];
             }
         }
-        
+
         @Override
         public void execute(DBMS dbms) {
             if (subCommand.equals("DATABASES")) {
