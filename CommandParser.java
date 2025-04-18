@@ -385,8 +385,18 @@ public class CommandParser {
          * Finds the index of the column in the combined schema.
          */
         private int findIndexInCombinedSchema(List<Table.Attribute> combinedSchema, String colName) {
+            // 1) exact (qualified) match
             for (int i = 0; i < combinedSchema.size(); i++) {
                 if (combinedSchema.get(i).getName().equalsIgnoreCase(colName)) {
+                    return i;
+                }
+            }
+            
+            // 2) fallback: unqualified suffix match
+            for (int i = 0; i < combinedSchema.size(); i++) {
+                String full = combinedSchema.get(i).getName();
+                int dot = full.indexOf('.');
+                if (dot >= 0 && full.substring(dot + 1).equalsIgnoreCase(colName)) {
                     return i;
                 }
             }

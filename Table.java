@@ -278,7 +278,7 @@ public class Table implements Serializable {
             this.operator   = operator;
             this.rightToken = rightToken;
     
-            // find left attribute index
+            // 1) try exact match
             int li = -1;
             for (int i = 0; i < schema.size(); i++) {
                 if (schema.get(i).getName().equalsIgnoreCase(leftAttr)) {
@@ -286,15 +286,37 @@ public class Table implements Serializable {
                     break;
                 }
             }
+
+            // 2) fallback: unqualified (suffix) match, e.g. "name" → matches "st.name"
+            if (li < 0) {
+                for (int i = 0; i < schema.size(); i++) {
+                    String full = schema.get(i).getName();
+                    int dot = full.indexOf('.');
+                    if (dot >= 0 && full.substring(dot + 1).equalsIgnoreCase(leftAttr)) {
+                        li = i;
+                        break;
+                    }
+                }
+            }
             if (li < 0) throw new IllegalArgumentException("Attribute not found: " + leftAttr);
             this.leftIndex = li;
     
-            // is the rightToken an attribute name?
+            // find right attribute index if applicable (same two‑step approach)
             int ri = -1;
             for (int i = 0; i < schema.size(); i++) {
                 if (schema.get(i).getName().equalsIgnoreCase(rightToken)) {
                     ri = i;
                     break;
+                }
+            }
+            if (ri < 0) {
+                for (int i = 0; i < schema.size(); i++) {
+                    String full = schema.get(i).getName();
+                    int dot = full.indexOf('.');
+                    if (dot >= 0 && full.substring(dot + 1).equalsIgnoreCase(rightToken)) {
+                        ri = i;
+                        break;
+                    }
                 }
             }
             this.rightIsAttr = ri >= 0;
