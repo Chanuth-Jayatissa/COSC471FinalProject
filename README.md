@@ -5,6 +5,30 @@ Maksim Spitsyn <br />
 Jonathan Mock <br />
 
 ---
+**Step-by-Step Instructions**
+
+1. Create a Workspace Folder on Your Local Machine
+    • On your computer, create a folder called MyWorkspace (or another of your choice). This will be your outer folder and VS Code workspace.
+
+2. Clone the GitHub Repository into the Workspace Folder
+    • Open Visual Studio Code.
+    • Use File > Open Folder... and select your workspace folder (MyWorkspace).
+    • Open the Command Palette (press Ctrl+Shift+P on Windows or Cmd+Shift+P on macOS).
+    • Type Git: Clone and press Enter.
+    • When prompted, paste the GitHub repository URL (for example, https://github.com/YourUsername/COSC471FinalProject.git).
+    • Choose your workspace folder (MyWorkspace) as the destination.
+    • VS Code will create a folder named COSC471FinalProject inside your workspace folder. This folder is your project’s repository.
+
+3. Open the Repository in VS Code
+    • Once the repository is cloned, open the folder COSC471FinalProject as your project.
+
+---
+**Dependencies**
+
+1. In Visual Studio Code, install "Debugger for Java", "Extension for Java", "Gradle for Java", "Maven for Java", "Project Manager for Java", and "Test Runner for Java"
+
+2. Go to https://developers.redhat.com/products/openjdk/download and download "Language Support for Java(TM) by Red Hat", v1.41.1
+---
 
 # DATABASE PROJECT
 
