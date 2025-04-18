@@ -276,7 +276,9 @@ public class CommandParser {
 
                 // For simplicity, assume that the SELECT list columns refer to the names in the
                 // combined schema.
-                System.out.println(String.join("\t", columns));
+                System.out.println("  -------------------------------------");
+                System.out.println("\t" + String.join("\t", columns));
+                System.out.println("  --------------------------------------");
                 int count = 1;
                 for (Table.Record rec : finalRecords) {
                     System.out.print(count + ".\t");
@@ -304,7 +306,9 @@ public class CommandParser {
                     System.out.println("Nothing found.");
                     return;
                 }
-                System.out.println(String.join("\t", columns));
+                System.out.println("  -------------------------------------");
+                System.out.println("\t" + String.join("\t", columns));
+                System.out.println("  -------------------------------------");
                 int count = 1;
                 for (Table.Record record : records) {
                     System.out.print(count + ".\t");
@@ -609,13 +613,13 @@ public class CommandParser {
         public InsertCommand(String input) throws Exception {
             // grab everything after "INSERT"
             String remainder = input.substring("INSERT".length()).trim();
-        
+
             // ——— NEW: reject any “INTO” usage ———
             if (remainder.toUpperCase().startsWith("INTO ")) {
                 throw new IllegalArgumentException(
-                    "INSERT command must be: INSERT <table> VALUES (...);  (no INTO allowed)");
+                        "INSERT command must be: INSERT <table> VALUES (...);  (no INTO allowed)");
             }
-        
+
             // ——— then find VALUES as before ———
             int valuesIndex = remainder.toUpperCase().indexOf("VALUES");
             if (valuesIndex == -1) {
@@ -632,7 +636,6 @@ public class CommandParser {
                 values.add(val.trim().replaceAll("^\"|\"$", ""));
             }
         }
-        
 
         @Override
         public void execute(DBMS dbms) {
