@@ -175,7 +175,7 @@ public class Table implements Serializable {
      * against the given schema, and returns a Condition object.
      */
     public static Condition parseCondition(String condStr, List<Attribute> schema) {
-        condStr = condStr.trim();
+        condStr = condStr.replaceAll("\\s*(>=|<=|!=|=|<|>)\\s*", " $1 ").trim();
         // 1) Strip one outermost pair of matching parentheses
         while (condStr.startsWith("(") && condStr.endsWith(")")) {
             int bal = 0, i = 0;
