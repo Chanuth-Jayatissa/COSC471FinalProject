@@ -25,9 +25,15 @@ Jonathan Mock <br />
 ---
 **Dependencies**
 
-1. In Visual Studio Code, install "Debugger for Java", "Extension for Java", "Gradle for Java", "Maven for Java", "Project Manager for Java", and "Test Runner for Java"
-
-2. Go to https://developers.redhat.com/products/openjdk/download and download "Language Support for Java(TM) by Red Hat", v1.41.1
+1. In Visual Studio Code, install: 
+       • "Debugger for Java"
+       • "Extension for Java"
+       • "Gradle for Java"
+       • "Maven for Java"
+       • "Project Manager for Java"
+       • "Test Runner for Java"
+   
+3. Go to https://developers.redhat.com/products/openjdk/download and download "Language Support for Java(TM) by Red Hat", v1.41.1
 ---
 
 # DATABASE PROJECT
