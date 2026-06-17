@@ -1,257 +1,43 @@
-# Team Member Names
-Chanuth Jayatissa <br />
-Benjamin Smith <br />
-Maksim Spitsyn <br />
-Jonathan Mock <br />
+# COSC471 Final Project
 
----
-**Step-by-Step Instructions**
+COSC471FinalProject is a Java database systems project that implements a small command-driven DBMS. The project includes command parsing, table/database management, file handling, and binary-search-tree indexing concepts for database operations.
 
-1. Create a Workspace Folder on Your Local Machine
-    • On your computer, create a folder called MyWorkspace (or another of your choice). This will be your outer folder and VS Code workspace.
+## Features
 
-2. Clone the GitHub Repository into the Workspace Folder
-    • Open Visual Studio Code.
-    • Use File > Open Folder... and select your workspace folder (MyWorkspace).
-    • Open the Command Palette (press Ctrl+Shift+P on Windows or Cmd+Shift+P on macOS).
-    • Type Git: Clone and press Enter.
-    • When prompted, paste the GitHub repository URL (for example, https://github.com/YourUsername/COSC471FinalProject.git).
-    • Choose your workspace folder (MyWorkspace) as the destination.
-    • VS Code will create a folder named COSC471FinalProject inside your workspace folder. This folder is your project’s repository.
+- Command parser for DBMS-style operations.
+- Database and table management classes.
+- Binary search tree data structure for indexed access.
+- File manager for persistence-oriented operations.
+- Support direction for commands such as CREATE, USE, DESCRIBE, SELECT, INSERT, UPDATE, DELETE, INPUT, and EXIT.
 
-3. Open the Repository in VS Code
-    • Once the repository is cloned, open the folder COSC471FinalProject as your project.
+## Tech Stack
 
----
-**Dependencies**
+- Java
+- Custom command parser
+- Binary search tree indexing
+- File-based persistence concepts
 
-1. In Visual Studio Code, install: 
-       • "Debugger for Java"
-       • "Extension for Java"
-       • "Gradle for Java"
-       • "Maven for Java"
-       • "Project Manager for Java"
-       • "Test Runner for Java"
-   
-3. Go to https://developers.redhat.com/products/openjdk/download and download "Language Support for Java(TM) by Red Hat", v1.41.1
----
+## Project Structure
 
-# DATABASE PROJECT
+- DBMSApp.java - application entry point
+- DBMS.java - DBMS command execution layer
+- CommandParser.java - command parsing logic
+- Database.java - database-level behavior
+- Table.java - table-level behavior
+- BinarySearchTree.java - indexing data structure
+- FileManager.java - file operations
 
-**DATABASE PROJECT – 100 points**
+## Getting Started
 
-Implement a DBMS as defined below.
+Compile and run the Java app from the repository root:
 
-**Commands are:**  
-(CREATE | USE | DESCRIBE | SELECT | LET | INSERT | UPDATE | DELETE | INPUT | EXIT)
+```bash
+javac *.java
+java DBMSApp
+```
 
-Each command is fully defined below:
+If using VS Code, install the Java extension pack or equivalent Java tooling before running/debugging.
 
----
+## Status
 
-## 1. CREATE DATABASE and USE
-
-a. **CREATE DATABASE Dbname;**  
-&nbsp;&nbsp;&nbsp;&nbsp;Creates a new database with the given name.
-
-b. **USE Dbname;**  
-&nbsp;&nbsp;&nbsp;&nbsp;Sets the current database.
-
----
-
-## 2. CREATE TABLE
-
-**Syntax:**
-
-
-- **AttrName:**  
-  An identifier (alphabet followed by up to 19 alphanumeric characters).
-
-- **Domain:**  
-  A data type defined as one of the following:
-  - **Integer:**  
-    You may assume a 16 or 32-bit sized integer.
-  - **Text:**  
-    Text with a maximum of 100 characters.
-  - **Float:**  
-    Format: `Integer[.Digit[Digit]]` (i.e., an integer or a floating point number with one or two digits after the decimal).
-
-**Details:**
-
-- Creates a table with the given attributes and types.
-- The first attribute may be specified as the primary key.
-- **Build a binary search tree (BST) with the given index.**  
-  - If a table has a primary key, then all retrievals from the table **must use the primary key index**.  
-    For example, given:  
-    ```
-    create table student (id integer primary key, name text);
-    ```
-    - Searching for _"the name of the student with id 123"_ should be via the BST.
-  - If a search is on a non-key attribute (e.g., _"the id or ids of students named John Doe"_), perform an **in-order traversal** of the BST. This ensures that everyone obtains the same sequence of names for the result.
-- If there is no primary key, you may scan the tuples in any order.
-
----
-
-## 3. SELECT Operation
-
-**Syntax:**
-
-
-- **AttrNameList:**  
-  `AttrName [,AttrName]*`
-
-- **TableNameList:**  
-  `TableName [,TableName]*`
-
-- **RelOp:**  
-  `<, >, <=, >=, =, !=`
-
-- **Constant:**  
-  Either an integer constant, a string constant, or a float constant.
-  - **IntConst:**  
-    `-2^31 .. 2^31-1`
-  - **StringConst:**  
-    `" "` enclosing up to 30 characters.
-  - **FloatConst:**  
-    `IntConst [. IntConst]`
-
-- **Condition:**  
-
-**Output:**
-
-Displays to the screen the rows (with column headers) that match the SELECT condition or “Nothing found” if there is no match.  
-The rows should be numbered (e.g., 1., 2., etc.).
-
----
-
-## 4. DESCRIBE
-
-**Syntax:**
-
-
-**Output:**
-
-Displays the listed table or ALL tables and their attributes with data types.  
-Also indicates the primary key attribute(s).
-
-*Example:*
-
-
----
-
-## 5. LET
-
-**Syntax:**
-
-
-**Output:**
-
-Stores the result of the SELECT operation under the given TableName with `AttrName` as the key.  
-*Note:* This involves creating a BST based on the key for TableName.  
-If the key attribute is not among the selected attributes, give an error message and abort the query.
-
----
-
-## 6. RENAME
-
-**Syntax:**
-
-
-**Output:**
-
-Renames all attributes of TableName to the new names provided in AttrNameList.  
-The number of new names must equal the number of attributes in TableName.
-
----
-
-## 7. INSERT
-
-**Syntax:**
-
-
-**Output:**
-
-Checks domain constraints, key constraints, and entity integrity constraints for the new tuple.  
-If all checks pass, the new tuple is inserted into TableName.  
-*Note:* Do not worry about referential integrity constraints.
-
----
-
-## 8. UPDATE
-
-**Syntax:**
-
-
-**Output:**
-
-Updates the tuples in TableName that satisfy the WHERE condition with the new SET values.
-
----
-
-## 9. DELETE
-
-**Syntax:**
-
-
-**Output:**
-
-Deletes tuples from TableName that satisfy the WHERE condition.  
-If the WHERE clause is omitted, then all tuples are deleted and the relation schema for the table is removed from the database.
-
----
-
-## 10. INPUT / OUTPUT
-
-**Syntax:**
-
-
-**Output:**
-
-Reads and executes the commands from FileName1.  
-If FileName2 is specified, the results are written to that file.
-
----
-
-## 11. EXIT
-
-**Syntax:**
-
-
-**Output:**
-
-Terminates program execution.  
-Before exit, the schemas and data must be saved so that they are available the next time the program is executed.
-
----
-
-## REQUIREMENTS
-
-- All systems are to be demonstrated in person (in my office) or via Zoom.
-- Demonstrations can be done during my office hours up to the last regular meeting day for the class.  
-  **No demonstration will be scheduled on final exam day.**
-- Groups of one to four students are allowed.  
-  If students drop from a group, the rest of the group are responsible for all work.
-
-**Indexing Requirements:**
-
-- All searches based on the primary key attribute must be done by first searching the index, and if the key is matched, use the record pointer to access the corresponding record from the file.
-- For tables with primary keys, when a search is on a non-key attribute, you must perform an **in-order traversal** of the BST index and retrieve the table records in the same order as the in-order traversal of the BST index.  
-  This ensures that every student will have the same sequence of results for test data, even if records are stored differently based on deletion implementations.
-
----
-
-## Implementation Suggestions
-
-- Use recursive descent parsing for the grammar.  
-  (If you are unfamiliar with recursive descent parsing, you may use any parsing technique you prefer.)
-- Each table should have its own file.  
-  The header of the file will contain the table description (number of attributes, attribute names, types, and sizes).  
-  The tuples follow the header.
-- Use a separate file to save the BST index for a table.
-
----
-
-## Rubric
-
-- **Numbers 1 to 10 are worth 10 points each.**  
-  **Each part must work completely for you to get full credit.**
+Coursework project for database systems. The README now summarizes the implementation instead of leading with assignment setup notes.
